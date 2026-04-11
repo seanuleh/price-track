@@ -160,7 +160,8 @@ app.post('/api/price-track/test-notification', requireAuth, async (req, res) => 
  * Manually trigger a full check run.
  */
 app.post('/api/price-track/check-all', requireAuth, async (req, res) => {
-  runCheckAll().catch(e => console.error('[api] check-all error:', e.message))
+  const { product_id } = req.body
+  runCheckAll(product_id).catch(e => console.error('[api] check-all error:', e.message))
   res.json({ ok: true, message: 'Check run started' })
 })
 

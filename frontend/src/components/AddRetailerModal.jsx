@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import pb from '../pb.js'
+import Portal from './Portal.jsx'
 
 export default function AddRetailerModal({ product, onClose, onAdded }) {
   const [name, setName]     = useState('')
@@ -29,7 +30,7 @@ export default function AddRetailerModal({ product, onClose, onAdded }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <Portal><div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title">Add Retailer</span>
@@ -57,6 +58,6 @@ export default function AddRetailerModal({ product, onClose, onAdded }) {
           </button>
         </div>
       </div>
-    </div>
+    </div></Portal>
   )
 }

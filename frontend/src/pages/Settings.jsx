@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import pb from '../pb.js'
+import Portal from '../components/Portal.jsx'
 
 const CHANNEL_TYPES = {
   pushbullet: { label: 'Pushbullet', fields: [{ key: 'api_key', label: 'API Key', type: 'password' }] },
@@ -139,7 +140,7 @@ function AddChannelModal({ onClose, onAdded }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <Portal><div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title">Add Notification Channel</span>
@@ -185,6 +186,6 @@ function AddChannelModal({ onClose, onAdded }) {
           </button>
         </div>
       </div>
-    </div>
+    </div></Portal>
   )
 }

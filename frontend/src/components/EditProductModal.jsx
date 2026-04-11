@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import pb from '../pb.js'
+import Portal from './Portal.jsx'
 
 export default function EditProductModal({ product, onClose, onSaved }) {
   const [name, setName]   = useState(product.name || '')
@@ -32,7 +33,7 @@ export default function EditProductModal({ product, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <Portal><div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title">Edit Product</span>
@@ -75,6 +76,6 @@ export default function EditProductModal({ product, onClose, onSaved }) {
           </button>
         </div>
       </div>
-    </div>
+    </div></Portal>
   )
 }

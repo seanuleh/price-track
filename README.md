@@ -21,7 +21,8 @@ A self-hosted price tracking app. Track products across multiple Australian reta
 | Frontend | React 18 + Vite + Recharts |
 | Backend | PocketBase 0.23 (SQLite) |
 | Scraper | Playwright (Chromium → Firefox → WebKit fallback chain) |
-| AI | Claude CLI (price detection, retailer discovery, product metadata) |
+| AI (vision) | Ollama + qwen2.5vl (price detection from screenshots) |
+| AI (text) | Claude CLI (retailer discovery, product metadata) |
 | Container | Single Docker image |
 
 ## Quick Start
@@ -73,7 +74,9 @@ Open `http://localhost:8090` in your browser.
 
 ### 3. Log in
 
-The app uses PocketBase's native auth. On first run, create a user account via the PocketBase admin UI at `http://localhost:8090/_/`, then log in through the app's login screen.
+The app uses PocketBase's native auth. There is no login screen in the frontend — authentication is handled by setting a valid `pocketbase_auth` token in `localStorage`.
+
+**Easiest approach:** log in via the PocketBase admin UI at `http://localhost:8090/_/`, then copy the token from the network tab into `localStorage.pocketbase_auth` in your browser console. Alternatively, use the PocketBase JS SDK to authenticate and the token is stored automatically.
 
 ---
 
@@ -95,18 +98,23 @@ cp .env.example .env
 | `CHECK_INTERVAL_MINUTES` | `60` | How often the scheduler runs price checks |
 | `CLAUDE_BIN` | `/usr/local/bin/claude` | Path to Claude CLI binary inside container |
 | `CLAUDE_HOME` | `/root` | Home directory for Claude CLI subprocess |
+| `OLLAMA_URL` | `http://ollama:11434` | Ollama API URL for vision-based price detection |
+| `VISION_MODEL` | `qwen2.5vl:7b` | Ollama model to use for screenshot price extraction |
 
 ---
 
 ## AI Features
 
-Price Track uses the [Claude CLI](https://claude.ai/download) for three things:
+Price Track uses two AI backends:
 
-1. **Price detection fallback** — When CSS heuristics fail, Claude analyses the page to find the price
-2. **Retailer discovery** — "Find AU Retailers" uses Claude with web search to find Australian stores selling a product
-3. **Product metadata** — Auto-fills name, brand, description, and image when adding a product by URL
+### Vision — Ollama (qwen2.5vl)
+When CSS heuristics fail to extract a price, the scraper takes a screenshot of the product page and sends it to a local Ollama instance running `qwen2.5vl:7b` (configurable via `VISION_MODEL` and `OLLAMA_URL`). Requires Ollama running with a vision-capable model loaded.
 
-These features are **optional**. Most major retail sites work without Claude via built-in CSS heuristics (Shopify, WooCommerce, Magento, Amazon). Claude is only called as a fallback or when explicitly triggered.
+### Text — Claude CLI
+1. **Retailer discovery** — "Find AU Retailers" uses Claude with web search to find Australian stores selling a product
+2. **Product metadata** — Auto-fills name, brand, description, and image when adding a product by URL
+
+Claude features are **optional**. Most major retail sites work without Claude via built-in CSS heuristics (Shopify, WooCommerce, Magento, Amazon).
 
 ### Setup
 
@@ -169,7 +177,7 @@ The worker exposes an internal HTTP API at port `3500`, proxied at `/api/price-t
 | Endpoint | Method | Body | Purpose |
 |----------|--------|------|---------|
 | `/api/price-track/scrape` | POST | `{ retailer_id }` | Manually trigger a price check |
-| `/api/price-track/check-all` | POST | — | Trigger a full scheduled run |
+| `/api/price-track/check-all` | POST | `{ product_id? }` | Trigger a full run, or a single-product check if `product_id` is provided |
 | `/api/price-track/detect-selector` | POST | `{ url }` | AI-detect price CSS selector |
 | `/api/price-track/fetch-meta` | POST | `{ url?, query? }` | AI-fetch product metadata |
 | `/api/price-track/find-retailers` | POST | `{ product_name, brand?, model?, url? }` | AI-find AU retailers |

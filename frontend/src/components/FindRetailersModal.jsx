@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import pb from '../pb.js'
+import Portal from './Portal.jsx'
 
 export default function FindRetailersModal({ product, onClose, onAdded }) {
   const [loading, setLoading]     = useState(false)
@@ -117,7 +118,7 @@ export default function FindRetailersModal({ product, onClose, onAdded }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <Portal><div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title">Find Australian Retailers</span>
@@ -207,6 +208,6 @@ export default function FindRetailersModal({ product, onClose, onAdded }) {
           )}
         </div>
       </div>
-    </div>
+    </div></Portal>
   )
 }

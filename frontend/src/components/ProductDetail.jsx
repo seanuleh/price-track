@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import pb from '../pb.js'
 import AddRetailerModal from './AddRetailerModal.jsx'
 import FindRetailersModal from './FindRetailersModal.jsx'
 import EditProductModal from './EditProductModal.jsx'
 
-export default function ProductDetail({ product, retailers, history, onBack, onUpdated, onDeleted }) {
+export default function ProductDetail({ product, retailers, history, historyLoading, onBack, onUpdated, onDeleted }) {
   const [showAddRetailer, setShowAddRetailer]   = useState(false)
   const [showFindRetailers, setShowFindRetailers] = useState(false)
   const [showEdit, setShowEdit]                 = useState(false)
@@ -15,6 +15,17 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
   const [deletingRet, setDeletingRet]       = useState(null)
   const [sortCol, setSortCol]               = useState('price')
   const [sortAsc, setSortAsc]               = useState(true)
+  const [chartVisible, setChartVisible]     = useState(false)
+
+  useEffect(() => {
+    if (!historyLoading) {
+      const raf = requestAnimationFrame(() => setChartVisible(true))
+      return () => cancelAnimationFrame(raf)
+    } else {
+      setChartVisible(false)
+    }
+  }, [historyLoading])
+
 
   const sortedRetailers = useMemo(() => {
     const sorted = [...retailers].sort((a, b) => {
@@ -57,28 +68,13 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
   const scrapeAll = async () => {
     setScrapingAll(true)
     setScrapeErr({})
-    const enabled = retailers.filter(r => r.enabled !== false)
-    const pendingIds = new Set(enabled.map(r => r.id))
-
-    // Mirror is_scraping from PocketBase in real time
-    pb.collection('retailers').subscribe('*', (e) => {
-      if (!pendingIds.has(e.record.id)) return
-      setScraping(prev => ({ ...prev, [e.record.id]: !!e.record.is_scraping }))
-      onUpdated()
-      if (!e.record.is_scraping) {
-        pendingIds.delete(e.record.id)
-        if (pendingIds.size === 0) {
-          pb.collection('retailers').unsubscribe()
-          setScrapingAll(false)
-        }
-      }
-    })
-
-    // Fire and forget — don't await
+    // Fire and forget — spinner state driven by always-on subscription
     fetch('/api/price-track/check-all', {
       method: 'POST',
-      headers: { 'Authorization': pb.authStore.token },
+      headers: { 'Content-Type': 'application/json', 'Authorization': pb.authStore.token },
+      body: JSON.stringify({ product_id: product.id }),
     }).catch(e => console.error('check-all failed:', e.message))
+    .finally(() => setScrapingAll(false))
   }
 
   const deleteRetailer = async (ret) => {
@@ -157,12 +153,12 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
       </div>
 
       {/* Price history chart */}
-      {history.length > 0 && (
+      {(historyLoading || history.length > 0) && (
         <div className="card" style={{marginBottom:24}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
             <div style={{fontWeight:600,fontSize:15}}>Price History</div>
           </div>
-          <div className="window-pills">
+          <div className="window-pills" style={{opacity: chartVisible ? 1 : 0, pointerEvents: chartVisible ? 'auto' : 'none', transition:'opacity 0.35s ease-out'}}>
             {WINDOWS.map(w => (
               <button
                 key={w.label}
@@ -171,8 +167,10 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
               >{w.label}</button>
             ))}
           </div>
-          {data.length === 0 && <div style={{color:'var(--text-muted)',fontSize:13,padding:'24px 0',textAlign:'center'}}>No data in this period</div>}
-          {data.length > 0 && <div className="chart-wrap">
+          <div className="chart-wrap" style={{position:'relative'}}>
+            {historyLoading && <div className="chart-skeleton chart-skeleton-abs" />}
+            {!historyLoading && data.length === 0 && <div style={{color:'var(--text-muted)',fontSize:13,padding:'24px 0',textAlign:'center'}}>No data in this period</div>}
+            {!historyLoading && data.length > 0 && <div style={{position:'absolute',inset:0,opacity: chartVisible ? 1 : 0, transition:'opacity 0.35s ease-out'}}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data} margin={{top:4,right:16,left:0,bottom:0}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E0D8CF" vertical={false} />
@@ -200,11 +198,15 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
                     dot={false}
                     activeDot={{r:4,strokeWidth:0}}
                     connectNulls
+                    isAnimationActive={true}
+                    animationDuration={600}
+                    animationEasing="ease-out"
                   />
                 ))}
               </LineChart>
             </ResponsiveContainer>
-          </div>}
+            </div>}
+          </div>
           {/* Legend */}
           <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px',marginTop:12}}>
             {retailers.map((r, i) => (
@@ -223,8 +225,8 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
         <span className="retailers-section-title">Retailers</span>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {retailers.length > 0 && (
-            <button className="btn-ghost btn-sm" onClick={scrapeAll} disabled={scrapingAll || Object.values(scraping).some(Boolean)}>
-              {scrapingAll ? <><span className="spinner" style={{width:10,height:10,borderWidth:2,display:'inline-block',verticalAlign:'middle',marginRight:4}} />Checking…</> : '↻ Check All'}
+            <button className="btn-ghost btn-sm" onClick={scrapeAll} disabled={scrapingAll || retailers.some(r => r.is_scraping) || Object.values(scraping).some(Boolean)}>
+              {(scrapingAll || retailers.some(r => r.is_scraping)) ? <><span className="spinner" style={{width:10,height:10,borderWidth:2,display:'inline-block',verticalAlign:'middle',marginRight:4}} />Checking…</> : '↻ Check All'}
             </button>
           )}
           <button className="btn-ghost btn-sm" onClick={() => setShowFindRetailers(true)}>Find AU Retailers</button>
@@ -296,9 +298,9 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
                           className="icon-btn"
                           title="Check price now"
                           onClick={() => scrapeRetailer(r)}
-                          disabled={!!scraping[r.id]}
+                          disabled={!!(scraping[r.id] || r.is_scraping)}
                         >
-                          {scraping[r.id]
+                          {(scraping[r.id] || r.is_scraping)
                             ? <span className="spinner" style={{width:14,height:14,borderWidth:2}} />
                             : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                           }

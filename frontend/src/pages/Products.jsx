@@ -4,10 +4,11 @@ import ProductDetail from '../components/ProductDetail.jsx'
 import AddProductModal from '../components/AddProductModal.jsx'
 
 export default function Products({ selectedProductId, onProductSelect }) {
-  const [products, setProducts]   = useState([])
-  const [retailers, setRetailers] = useState([])
-  const [history, setHistory]     = useState([])
-  const [loading, setLoading]     = useState(true)
+  const [products, setProducts]         = useState([])
+  const [retailers, setRetailers]       = useState([])
+  const [history, setHistory]           = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [showAdd, setShowAdd]     = useState(false)
   const selected = selectedProductId
   const setSelected = onProductSelect
@@ -16,14 +17,12 @@ export default function Products({ selectedProductId, onProductSelect }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [prods, rets, hist] = await Promise.all([
+      const [prods, rets] = await Promise.all([
         pb.collection('products').getFullList({ sort: '-created' }),
         pb.collection('retailers').getFullList({ sort: 'name' }),
-        pb.collection('price_history').getFullList({ sort: '-created', expand: 'retailer' }),
       ])
       setProducts(prods)
       setRetailers(rets)
-      setHistory(hist)
     } catch (e) {
       if (e.status === 401) { pb.authStore.clear(); window.location.reload() }
     } finally {
@@ -33,18 +32,36 @@ export default function Products({ selectedProductId, onProductSelect }) {
 
   const loadSilent = useCallback(async () => {
     try {
-      const [rets, hist] = await Promise.all([
-        pb.collection('retailers').getFullList({ sort: 'name' }),
-        pb.collection('price_history').getFullList({ sort: '-created', expand: 'retailer' }),
-      ])
+      const rets = await pb.collection('retailers').getFullList({ sort: 'name' })
       setRetailers(rets)
-      setHistory(hist)
     } catch (e) {
       if (e.status === 401) { pb.authStore.clear(); window.location.reload() }
     }
   }, [])
 
+  const loadHistory = useCallback(async (productId) => {
+    setHistoryLoading(true)
+    try {
+      const hist = await pb.collection('price_history').getFullList({
+        sort: '-created',
+        expand: 'retailer',
+        filter: `product="${productId}"`,
+      })
+      setHistory(hist)
+    } catch (e) {
+      if (e.status === 401) { pb.authStore.clear(); window.location.reload() }
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
   useEffect(() => { load() }, [load])
+
+  // Load history when a product is selected
+  useEffect(() => {
+    if (!selected) { setHistory([]); setHistoryLoading(false); return }
+    loadHistory(selected)
+  }, [selected, loadHistory])
 
   // Realtime subscriptions when a product is selected
   useEffect(() => {
@@ -102,23 +119,27 @@ export default function Products({ selectedProductId, onProductSelect }) {
   if (loading) return <div className="empty-state"><div className="spinner" /></div>
 
   if (selected) {
-    const product  = products.find(p => p.id === selected)
+    const product  = products.find(p => p.id === selected) || null
+    if (!product && !loading) return <div className="empty-state"><div className="spinner" /></div>
     const rets     = productRetailers(selected)
-    const hist     = history.filter(h => h.product === selected)
+    const hist     = history
     return (
-      <ProductDetail
-        product={product}
-        retailers={rets}
-        history={hist}
-        onBack={() => setSelected(null)}
-        onUpdated={loadSilent}
-        onDeleted={handleProductDeleted}
-      />
+      <div key={selected} className="subpage-enter">
+        <ProductDetail
+          product={product}
+          retailers={rets}
+          history={hist}
+          historyLoading={historyLoading}
+          onBack={() => setSelected(null)}
+          onUpdated={loadSilent}
+          onDeleted={handleProductDeleted}
+        />
+      </div>
     )
   }
 
   return (
-    <>
+    <div key="list" className="subpage-enter subpage-enter-back">
       <div className="page-header">
         <h1 className="page-title">Products</h1>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add Product</button>
@@ -178,6 +199,6 @@ export default function Products({ selectedProductId, onProductSelect }) {
       {showAdd && (
         <AddProductModal onClose={() => setShowAdd(false)} onAdded={handleProductAdded} />
       )}
-    </>
+    </div>
   )
 }

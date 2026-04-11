@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Products from './pages/Products.jsx'
 import Alerts from './pages/Alerts.jsx'
 import Settings from './pages/Settings.jsx'
@@ -42,8 +42,10 @@ export default function App() {
   const [page, setPageState] = useState(initial.page)
   const [productId, setProductId] = useState(initial.productId)
   const [showDebug, setShowDebug] = useState(false)
+  const pageRef = useRef(initial.page)
 
   const setPage = useCallback((p) => {
+    pageRef.current = p
     setPageState(p)
     setProductId(null)
     window.location.hash = p
@@ -64,6 +66,9 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
+  const pageIndex = (id) => PAGES.findIndex(p => p.id === id)
+  const activeIdx = pageIndex(page)
+
   return (
     <div className="layout">
       <nav className="sidebar">
@@ -80,9 +85,30 @@ export default function App() {
         ))}
       </nav>
       <main className="main">
-        {page === 'products' && <Products selectedProductId={productId} onProductSelect={handleProductSelect} />}
-        {page === 'alerts'   && <Alerts />}
-        {page === 'settings' && <Settings />}
+        <div className="pages-container">
+          {PAGES.map((p, i) => {
+            const isActive = p.id === page
+            const offset = i - activeIdx
+            return (
+              <div
+                key={p.id}
+                className="page-pane"
+                style={{
+                  transform: `translateX(${offset * 32}px)`,
+                  opacity: isActive ? 1 : 0,
+                  pointerEvents: isActive ? 'auto' : 'none',
+                  position: isActive ? 'relative' : 'absolute',
+                  width: '100%',
+                  top: 0,
+                }}
+              >
+                {p.id === 'products' && <Products selectedProductId={productId} onProductSelect={handleProductSelect} />}
+                {p.id === 'alerts'   && <Alerts />}
+                {p.id === 'settings' && <Settings />}
+              </div>
+            )
+          })}
+        </div>
       </main>
       {showDebug && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:200,padding:16,overflowY:'auto',whiteSpace:'pre-wrap',wordBreak:'break-all',fontSize:12,color:'#fff'}}>
@@ -94,6 +120,7 @@ export default function App() {
         </div>
       )}
       <nav className="bottom-nav">
+        <div className="bottom-nav-indicator" style={{left: `calc(${PAGES.findIndex(p => p.id === page)} * (100% / 3) + (100% / 12))`}} />
         {PAGES.map(p => (
           <button
             key={p.id}

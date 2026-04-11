@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import pb from '../pb.js'
+import Portal from '../components/Portal.jsx'
 
 export default function Alerts() {
   const [alerts, setAlerts]     = useState([])
@@ -125,7 +126,7 @@ function AddAlertModal({ products, onClose, onAdded }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <Portal><div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title">Add Alert</span>
@@ -163,6 +164,6 @@ function AddAlertModal({ products, onClose, onAdded }) {
           </button>
         </div>
       </div>
-    </div>
+    </div></Portal>
   )
 }

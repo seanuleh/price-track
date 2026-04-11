@@ -4,34 +4,46 @@ import { sendNotification } from './notifiers/index.js'
 
 const CHECK_INTERVAL_MINUTES = parseInt(process.env.CHECK_INTERVAL_MINUTES || '60', 10)
 
-export async function runCheckAll() {
-  console.log('[scheduler] Starting price check run...')
+let running = false
+
+export async function runCheckAll(productId) {
+  if (!productId && running) {
+    console.log('[scheduler] Run already in progress — skipping.')
+    return
+  }
+  if (!productId) running = true
+  console.log(productId ? `[scheduler] Starting check for product ${productId}...` : '[scheduler] Starting price check run...')
 
   let retailers
   try {
-    retailers = await pbList('retailers', 'enabled=true')
+    const filter = productId ? `enabled=true && product="${productId}"` : 'enabled=true'
+    retailers = await pbList('retailers', filter)
   } catch (e) {
     console.error('[scheduler] Failed to fetch retailers:', e.message)
+    if (!productId) running = false
     return
   }
 
   console.log(`[scheduler] Checking ${retailers.length} retailer(s)...`)
 
-  const CONCURRENCY = 6
-  const queue = [...retailers]
-  const workers = Array.from({ length: CONCURRENCY }, async () => {
-    while (queue.length) {
-      const retailer = queue.shift()
-      try {
-        await checkRetailer(retailer)
-      } catch (e) {
-        console.error(`[scheduler] Error checking retailer ${retailer.name}:`, e.message)
+  try {
+    const CONCURRENCY = 6
+    const queue = [...retailers]
+    const workers = Array.from({ length: CONCURRENCY }, async () => {
+      while (queue.length) {
+        const retailer = queue.shift()
+        try {
+          await checkRetailer(retailer)
+        } catch (e) {
+          console.error(`[scheduler] Error checking retailer ${retailer.name}:`, e.message)
+        }
       }
-    }
-  })
-  await Promise.all(workers)
-
-  console.log('[scheduler] Run complete.')
+    })
+    await Promise.all(workers)
+    console.log('[scheduler] Run complete.')
+  } finally {
+    if (!productId) running = false
+  }
 }
 
 export async function checkRetailer(retailer) {

@@ -25,7 +25,7 @@ docker compose up -d --build price-track
 - `POST /api/price-track/fetch-meta` — AI-fetch product metadata from URL/query
 - `POST /api/price-track/find-retailers` — AI-find Australian retailers for a product
 - `POST /api/price-track/test-notification` — send test notification for a channel_id
-- `POST /api/price-track/check-all` — trigger full check run
+- `POST /api/price-track/check-all` — trigger full check run (optional `product_id` body param to limit to one product)
 
 ## Adding a New Notifier
 1. Create `worker/src/notifiers/<type>.js` — export `async function send(config, notification)`
