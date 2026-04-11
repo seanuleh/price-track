@@ -43,7 +43,14 @@ export async function checkRetailer(retailer) {
   try {
     result = await scrapePrice(retailer.url, retailer.selector)
   } catch (e) {
-    await pbUpdate('retailers', retailer.id, { is_scraping: false }).catch(() => {})
+    const isBotBlocked = /bot protection|captcha|blocked|403|429/i.test(e.message)
+    await pbUpdate('retailers', retailer.id, {
+      is_scraping: false,
+      ...(isBotBlocked ? { enabled: false } : {}),
+    }).catch(() => {})
+    if (isBotBlocked) {
+      console.warn(`[scheduler]   → Bot protection detected for ${retailer.name} — disabling retailer`)
+    }
     throw e
   }
 

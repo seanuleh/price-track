@@ -104,7 +104,7 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
     }
   }
 
-  const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7']
+  const COLORS = ['#C8501A','#5B7FA6','#6BAA8A','#9B7ABF','#B89030','#A05050']
 
   const WINDOWS = [
     { label: '1D', days: 1 },
@@ -132,22 +132,27 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
 
   return (
     <>
-      <button className="detail-back" onClick={onBack}>← Back to products</button>
+      <div className="detail-top-bar">
+        <button className="detail-back" onClick={onBack}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          All products
+        </button>
+        <div className="detail-actions">
+          <button className="btn-ghost btn-sm" onClick={() => setShowEdit(true)}>Edit</button>
+          <button className="btn-danger btn-sm" onClick={deleteProduct}>Delete</button>
+        </div>
+      </div>
 
       <div className="detail-header">
         {product.image_url
           ? <img className="detail-img" src={product.image_url} alt={product.name} onError={e=>e.target.style.display='none'} />
-          : <div className="detail-img" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:48}}>📦</div>
+          : <div className="detail-img" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:36,opacity:0.3}}>📦</div>
         }
         <div className="detail-meta">
           <h1 className="detail-name">{product.name}</h1>
-          {product.brand && <div className="detail-brand">{product.brand} {product.model && `· ${product.model}`}</div>}
+          {product.brand && <div className="detail-brand">{product.brand}{product.model ? ` · ${product.model}` : ''}</div>}
           {product.description && <p className="detail-desc">{product.description}</p>}
-          {product.url && <a href={product.url} target="_blank" rel="noopener" style={{fontSize:12,marginTop:6,display:'block'}}>View product page ↗</a>}
-        </div>
-        <div style={{display:'flex',gap:8,flexShrink:0}}>
-          <button className="btn-ghost btn-sm" onClick={() => setShowEdit(true)}>Edit</button>
-          <button className="btn-danger btn-sm" onClick={deleteProduct}>Delete</button>
+          {product.url && <a href={product.url} target="_blank" rel="noopener" className="detail-url">Product page ↗</a>}
         </div>
       </div>
 
@@ -155,7 +160,7 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
       {history.length > 0 && (
         <div className="card" style={{marginBottom:24}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-            <div style={{fontWeight:600}}>Price History</div>
+            <div style={{fontWeight:600,fontSize:15}}>Price History</div>
           </div>
           <div className="window-pills">
             {WINDOWS.map(w => (
@@ -170,10 +175,10 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
           {data.length > 0 && <div className="chart-wrap">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data} margin={{top:4,right:16,left:0,bottom:0}}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="label" tick={{fill:'var(--text-muted)',fontSize:11}} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E0D8CF" vertical={false} />
+                <XAxis dataKey="label" tick={{fill:'#8C857C',fontSize:11}} tickLine={false} axisLine={false} />
                 <YAxis
-                  tick={{fill:'var(--text-muted)',fontSize:11}}
+                  tick={{fill:'#8C857C',fontSize:11}}
                   tickFormatter={v=>`$${v.toLocaleString()}`}
                   tickLine={false}
                   axisLine={false}
@@ -181,8 +186,8 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
                   domain={['auto','auto']}
                 />
                 <Tooltip
-                  contentStyle={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:8,fontSize:13}}
-                  labelStyle={{color:'var(--text-muted)',marginBottom:4}}
+                  contentStyle={{background:'#FFFFFF',border:'1px solid #E0D8CF',borderRadius:10,fontSize:13,boxShadow:'0 4px 16px rgba(0,0,0,0.08)'}}
+                  labelStyle={{color:'#8C857C',marginBottom:6,fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:'0.05em'}}
                   formatter={(v, name) => [`$${v.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})}`, name]}
                 />
                 {retailers.map((r, i) => (
@@ -215,7 +220,7 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
 
       {/* Retailers table */}
       <div className="retailers-header">
-        <span style={{fontWeight:600}}>Retailers</span>
+        <span className="retailers-section-title">Retailers</span>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {retailers.length > 0 && (
             <button className="btn-ghost btn-sm" onClick={scrapeAll} disabled={scrapingAll || Object.values(scraping).some(Boolean)}>
@@ -248,20 +253,22 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
                 <th></th>
               </tr>
             </thead>
-            <tbody>
-              {sortedRetailers.map((r, i) => {
+            {sortedRetailers.map((r, i) => {
                 const retHistory = history.filter(h => h.retailer === r.id).sort((a,b) => new Date(b.created) - new Date(a.created))
                 const prev = retHistory[1]
                 const change = prev && r.last_price ? r.last_price - prev.price : null
+                const pricesWithData = retailers.filter(x => x.last_price).map(x => x.last_price)
+                const bestPrice = pricesWithData.length ? Math.min(...pricesWithData) : null
+                const isBest = bestPrice != null && r.last_price === bestPrice
                 return (
-                  <tr key={r.id}>
+                  <tbody key={r.id}><tr>
                     <td>
                       <div style={{fontWeight:500}}>{r.name}</div>
                       {r.url && <a href={r.url} target="_blank" rel="noopener" style={{fontSize:11,color:'var(--text-muted)'}}>View ↗</a>}
                     </td>
                     <td>
                       {r.last_price
-                        ? <><span style={{fontWeight:700,color:COLORS[i%COLORS.length]}}>${r.last_price.toFixed(2)}</span>
+                        ? <><span style={{fontWeight:700,color: isBest ? 'var(--success)' : 'var(--text)'}}>${r.last_price.toFixed(2)}</span>
                             {change !== null && (
                               <span className={`price-change ${change > 0 ? 'up' : 'down'}`}>
                                 {change > 0 ? '▲' : '▼'} ${Math.abs(change).toFixed(2)}
@@ -283,29 +290,40 @@ export default function ProductDetail({ product, retailers, history, onBack, onU
                         <span className="toggle-slider" />
                       </label>
                     </td>
-                    <td>
-                      <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
+                    <td className="col-actions">
+                      <div className="row-actions">
                         <button
-                          className="btn-ghost btn-sm"
+                          className="icon-btn"
+                          title="Check price now"
                           onClick={() => scrapeRetailer(r)}
                           disabled={!!scraping[r.id]}
                         >
-                          {scraping[r.id] ? <span className="spinner" style={{width:12,height:12,borderWidth:2}} /> : '↻ Check'}
+                          {scraping[r.id]
+                            ? <span className="spinner" style={{width:14,height:14,borderWidth:2}} />
+                            : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                          }
                         </button>
                         <button
-                          className="btn-danger btn-sm"
+                          className="icon-btn icon-btn-danger"
+                          title="Remove retailer"
                           onClick={() => deleteRetailer(r)}
                           disabled={deletingRet === r.id}
                         >
-                          ✕
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         </button>
                       </div>
-                      {scrapeErr[r.id] && <div className="error-msg">{scrapeErr[r.id]}</div>}
                     </td>
                   </tr>
+                  {scrapeErr[r.id] && (
+                    <tr className="error-row">
+                      <td colSpan={5} style={{padding:'4px 14px 10px',border:'none',color:'var(--danger)',fontSize:12}}>
+                        {scrapeErr[r.id]}
+                      </td>
+                    </tr>
+                  )}
+                  </tbody>
                 )
-              })}
-            </tbody>
+            })}
           </table>
         </div>
       )}

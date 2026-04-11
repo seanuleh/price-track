@@ -67,7 +67,7 @@ export default function App() {
   return (
     <div className="layout">
       <nav className="sidebar">
-        <div className="sidebar-logo" onClick={() => setShowDebug(true)} style={{cursor:'pointer'}}>Price<span>Track</span></div>
+        <div className="sidebar-logo" onClick={() => setShowDebug(true)}>Price<span>Track</span></div>
         {PAGES.map(p => (
           <button
             key={p.id}

@@ -55,7 +55,8 @@ export default function Alerts() {
 
       {alerts.length === 0 ? (
         <div className="empty-state">
-          <p style={{marginBottom:12}}>No alerts set up yet.</p>
+          <div className="empty-state-icon">🔔</div>
+          <p>No alerts set up yet.</p>
           <button className="btn-primary" onClick={() => setShowAdd(true)}>Create your first alert</button>
         </div>
       ) : (
@@ -68,7 +69,7 @@ export default function Alerts() {
                   <div className="alert-product">{product?.name || '—'}</div>
                   <div className="alert-condition">{conditionLabel(a.condition, a.target_price)}</div>
                   {a.triggered_at && (
-                    <div style={{fontSize:11,color:'var(--warning)',marginTop:2}}>
+                    <div style={{fontSize:11,color:'var(--warning)',marginTop:4,fontWeight:500}}>
                       Last triggered: {new Date(a.triggered_at).toLocaleString('en-AU',{dateStyle:'short',timeStyle:'short'})}
                     </div>
                   )}

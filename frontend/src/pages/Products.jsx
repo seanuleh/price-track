@@ -126,52 +126,49 @@ export default function Products({ selectedProductId, onProductSelect }) {
 
       {products.length === 0 ? (
         <div className="empty-state">
-          <p style={{marginBottom: 12}}>No products yet.</p>
+          <div className="empty-state-icon">📦</div>
+          <p>No products yet.</p>
           <button className="btn-primary" onClick={() => setShowAdd(true)}>Add your first product</button>
         </div>
       ) : (
-        <div className="product-grid">
+        <div className="product-list">
           {products.map(p => {
-            const rets  = productRetailers(p.id)
-            const best  = bestPrice(p.id)
+            const rets   = productRetailers(p.id)
+            const best   = bestPrice(p.id)
             const prices = rets.filter(r => r.last_price).sort((a, b) => a.last_price - b.last_price)
+            const cheapest = prices[0]
+            const secondCheapest = prices[1]
+            const saving = cheapest && secondCheapest ? secondCheapest.last_price - cheapest.last_price : null
             return (
-              <div key={p.id} className="product-card" onClick={() => setSelected(p.id)}>
-                <div className="product-card-head">
+              <div key={p.id} className="product-row" onClick={() => setSelected(p.id)}>
+                <div className="product-row-thumb">
                   {p.image_url
-                    ? <img className="product-card-img" src={p.image_url} alt={p.name} onError={e => e.target.style.display='none'} />
-                    : <div className="product-card-img" style={{display:'flex',alignItems:'center',justifyContent:'center',fontSize:28}}>📦</div>
+                    ? <img src={p.image_url} alt={p.name} onError={e => e.target.style.display='none'} />
+                    : <span style={{fontSize:20,opacity:0.25}}>📦</span>
                   }
-                  <div className="product-card-info">
-                    <div className="product-card-name">{p.name}</div>
-                    {p.brand && <div className="product-card-brand">{p.brand}</div>}
-                    <div style={{marginTop:6}}>
-                      <span className="tag tag-neutral">{rets.length} retailer{rets.length !== 1 ? 's' : ''}</span>
-                    </div>
+                </div>
+                <div className="product-row-info">
+                  <div className="product-row-name">{p.name}</div>
+                  <div className="product-row-meta">
+                    {p.brand && <span>{p.brand}</span>}
+                    {p.brand && rets.length > 0 && <span className="meta-dot">·</span>}
+                    {rets.length > 0 && <span>{rets.length} retailer{rets.length !== 1 ? 's' : ''}</span>}
+                    {rets.length === 0 && <span style={{fontStyle:'italic'}}>No retailers yet</span>}
                   </div>
                 </div>
-                {prices.length > 0 && (
-                  <div className="product-card-prices">
-                    {prices.slice(0, 3).map((r, i) => (
-                      <div key={r.id} className="price-row">
-                        <span className="price-retailer">{r.name}</span>
-                        <span className={`price-value${r.last_price === best ? ' best' : ''}`}>
-                          ${r.last_price.toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
-                    {prices.length > 3 && (
-                      <div className="price-row">
-                        <span className="price-retailer">+{prices.length - 3} more</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {prices.length === 0 && (
-                  <div style={{color:'var(--text-muted)', fontSize:12, paddingTop:8, borderTop:'1px solid var(--border)'}}>
-                    No prices yet — add retailers to track
-                  </div>
-                )}
+                <div className="product-row-price">
+                  {best != null ? (
+                    <>
+                      <span className="product-row-best">${best.toFixed(2)}</span>
+                      {saving != null && saving > 0.5 && (
+                        <span className="product-row-saving">Save ${saving.toFixed(0)}</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="product-row-no-price">—</span>
+                  )}
+                </div>
+                <svg className="product-row-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
               </div>
             )
           })}

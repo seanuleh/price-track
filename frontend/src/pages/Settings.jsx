@@ -60,14 +60,15 @@ export default function Settings() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add Channel</button>
       </div>
 
-      <div style={{color:'var(--text-muted)',fontSize:13,marginBottom:20}}>
+      <p className="page-description">
         Notifications are sent when an alert condition is met. Add channels here, then enable them.
-      </div>
+      </p>
 
       {channels.length === 0 ? (
         <div className="empty-state">
-          <p style={{marginBottom:12}}>No notification channels configured.</p>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Pushbullet or webhook</button>
+          <div className="empty-state-icon">📨</div>
+          <p>No notification channels configured.</p>
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add a channel</button>
         </div>
       ) : (
         <div className="channel-list">
