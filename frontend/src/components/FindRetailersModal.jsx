@@ -171,23 +171,31 @@ export default function FindRetailersModal({ product, onClose, onAdded }) {
                 const alreadyAdded = existing.some(e =>
                   e.url === r.url || e.name.toLowerCase() === r.name.toLowerCase()
                 )
+                const isChecked = !alreadyAdded && !!selected[i]
                 return (
-                  <label key={i} onClick={() => toggle(i)} style={{
-                    display:'grid', gridTemplateColumns:'20px 1fr auto', alignItems:'start', gap:10,
+                  <div key={i} onClick={() => toggle(i)} style={{
+                    display:'grid', gridTemplateColumns:'18px 1fr auto', alignItems:'center', gap:10,
                     cursor: alreadyAdded ? 'default' : 'pointer',
                     padding:'10px 12px', borderRadius:8,
-                    border:`1px solid ${alreadyAdded ? 'var(--border)' : selected[i] ? 'var(--accent)' : 'var(--border)'}`,
-                    background: alreadyAdded ? 'transparent' : selected[i] ? 'rgba(99,102,241,0.08)' : 'transparent',
+                    border:`1px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}`,
+                    background: isChecked ? 'var(--accent-light)' : 'transparent',
                     opacity: alreadyAdded ? 0.45 : 1,
                     transition:'all 0.15s', overflow:'hidden'}}>
-                    <input type="checkbox" checked={alreadyAdded ? false : !!selected[i]} disabled={alreadyAdded} onChange={() => {}}
-                      style={{marginTop:3,accentColor:'var(--accent)',pointerEvents:'none'}} />
+                    <div style={{
+                      width:16, height:16, borderRadius:4, flexShrink:0,
+                      border:`2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}`,
+                      background: isChecked ? 'var(--accent)' : 'transparent',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      transition:'all 0.15s',
+                    }}>
+                      {isChecked && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    </div>
                     <div style={{minWidth:0,overflow:'hidden'}}>
-                      <div style={{fontWeight:600,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.name}</div>
+                      <div style={{fontWeight:500,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text)'}}>{r.name}</div>
                       <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.url}</div>
                     </div>
                     {alreadyAdded && <span style={{fontSize:11,color:'var(--text-muted)',whiteSpace:'nowrap'}}>Already added</span>}
-                  </label>
+                  </div>
                 )
               })}
             </div>

@@ -22,7 +22,7 @@ A self-hosted price tracking app. Track products across multiple Australian reta
 | Backend | PocketBase 0.23 (SQLite) |
 | Scraper | Playwright (Chromium → Firefox → WebKit fallback chain) |
 | AI (vision) | Ollama + qwen2.5vl (price detection from screenshots) |
-| AI (text) | Claude CLI (retailer discovery, product metadata) |
+| AI (text) | Claude CLI — Haiku (retailer discovery, product metadata) |
 | Container | Single Docker image |
 
 ## Quick Start

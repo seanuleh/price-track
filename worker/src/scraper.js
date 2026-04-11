@@ -11,7 +11,7 @@ const VISION_MODEL = process.env.VISION_MODEL || 'qwen2.5vl:7b'
 
 function callClaude(prompt, { tools } = {}) {
   return new Promise((resolve, reject) => {
-    const args = ['--print', '--output-format', 'json', '--model', 'claude-sonnet-4-6']
+    const args = ['--print', '--output-format', 'json', '--model', 'claude-haiku-4-5-20251001']
     if (tools && tools.length) args.push('--allowedTools', tools.join(','))
     args.push('-p', prompt)
 
@@ -194,25 +194,12 @@ export function findAustralianRetailersStream({ product_name, brand, model, url,
     const excludeSection = existing.length
       ? `\nDo NOT include any of these already-tracked retailers:\n${existing.map(e => `- ${e.name} (${e.url})`).join('\n')}\n`
       : ''
-    const prompt = `Search the web for Australian online retailers that sell the "${query}" product.
+    const prompt = `Search for Australian retailers selling "${query}".${url ? ` Manufacturer page: ${url}` : ''}${excludeSection}
+Do ONE web search. Return ONLY a JSON array (no markdown):
+[{"name":"Retailer Name","url":"https://exact-product-page-url"}]
+Rules: Australian retailers only (.com.au preferred), specific product page URLs, exclude manufacturer store (${brand || 'manufacturer'}), only include if confident product is listed.`
 
-${url ? `The manufacturer/official page is: ${url}` : ''}
-
-Find legitimate Australian retailers (not the manufacturer's own store unless they sell directly) that have this specific product listed for sale. Focus on well-known Australian electronics and hi-fi retailers.
-${excludeSection}
-Return a JSON array of up to 10 retailers in this exact format:
-[
-  { "name": "Retailer Name", "url": "https://exact-product-page-url.com.au/product/..." }
-]
-
-Rules:
-- Only include .com.au or Australian retailers (aussie stores)
-- Only include retailers where you are confident the product is actually listed
-- Use the specific product page URL, not just the retailer homepage
-- Do not include the manufacturer's own store (${brand || 'manufacturer'})
-- Respond with ONLY valid JSON array, no markdown, no explanation`
-
-    const args = ['--print', '--verbose', '--output-format', 'stream-json', '--model', 'claude-sonnet-4-6', '--allowedTools', 'WebSearch', '-p', prompt]
+    const args = ['--print', '--verbose', '--output-format', 'stream-json', '--model', 'claude-haiku-4-5-20251001', '--max-turns', '5', '--allowedTools', 'WebSearch', '-p', prompt]
     const proc = spawn(CLAUDE_BIN, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, HOME: process.env.CLAUDE_HOME || '/root' },
@@ -352,8 +339,12 @@ Respond with ONLY valid JSON, no markdown, no explanation.`
 
   try {
     const text = await callClaude(prompt)
-    return JSON.parse(text.trim())
-  } catch {
+    const clean = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+    const match = clean.match(/\{[\s\S]*\}/)
+    if (!match) throw new Error('No JSON object in response')
+    return JSON.parse(match[0])
+  } catch (e) {
+    console.error('[scraper] fetchProductMeta parse error:', e.message)
     return { name: query || 'Unknown Product', brand: null, description: null, image_url: null }
   }
 }
