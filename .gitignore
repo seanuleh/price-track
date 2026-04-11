@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+worker/node_modules/
+
+# Build output
+frontend/dist/
+
+# PocketBase data
+pb_data/
+*.db
+*.db-shm
+*.db-wal
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Claude CLI config (contains API keys)
+.claude/
+.claude.json
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo

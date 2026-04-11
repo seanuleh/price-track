@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Price Track</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Auto-reload on new deploy: poll index.html for changed asset hashes
+      (function() {
+        var current = document.querySelector('script[src*="/assets/"]');
+        if (!current) return; // only works in production builds
+        var src = current.getAttribute('src');
+        setInterval(function() {
+          fetch('/?_t=' + Date.now(), { cache: 'no-store' })
+            .then(function(r) { return r.text() })
+            .then(function(html) {
+              var m = html.match(/src="(\/assets\/[^"]+)"/);
+              if (m && m[1] !== src) window.location.reload();
+            })
+            .catch(function() {});
+        }, 5000);
+      })();
+    </script>
+  </body>
+</html>
