@@ -23,7 +23,7 @@ export async function pushbullet(config, notification) {
   }
 }
 
-function formatMessage({ title: t, body: b, product, retailer, price, previousPrice }) {
+function formatMessage({ title: t, body: b, product, retailer, retailer_url, product_url, price, previousPrice }) {
   const title = t || `Price Alert: ${product}`
   let body = b || ''
 
@@ -36,6 +36,8 @@ function formatMessage({ title: t, body: b, product, retailer, price, previousPr
     } else {
       body = `${product} is now $${price.toFixed(2)} at ${retailer}`
     }
+    if (retailer_url) body += `\n\nBuy: ${retailer_url}`
+    if (product_url)  body += `\nTrack: ${product_url}`
   }
 
   return { title, body }

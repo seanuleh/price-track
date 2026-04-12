@@ -7,6 +7,7 @@ export default function Alerts() {
   const [products, setProducts] = useState([])
   const [loading, setLoading]   = useState(true)
   const [showAdd, setShowAdd]   = useState(false)
+  const [editing, setEditing]   = useState(null) // alert object being edited
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -83,6 +84,7 @@ export default function Alerts() {
                     <input type="checkbox" checked={a.enabled || false} onChange={() => toggleAlert(a)} />
                     <span className="toggle-slider" />
                   </label>
+                  <button className="btn-ghost btn-sm" onClick={() => setEditing(a)} title="Edit alert">✎</button>
                   <button className="btn-danger btn-sm" onClick={() => deleteAlert(a.id)}>✕</button>
                 </div>
               </div>
@@ -94,7 +96,83 @@ export default function Alerts() {
       {showAdd && (
         <AddAlertModal products={products} onClose={() => setShowAdd(false)} onAdded={(a) => { setAlerts(prev => [a, ...prev]); setShowAdd(false) }} />
       )}
+      {editing && (
+        <EditAlertModal
+          alert={editing}
+          products={products}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => { setAlerts(prev => prev.map(a => a.id === updated.id ? updated : a)); setEditing(null) }}
+        />
+      )}
     </>
+  )
+}
+
+function EditAlertModal({ alert, products, onClose, onSaved }) {
+  const [productId, setProductId]     = useState(alert.product)
+  const [condition, setCondition]     = useState(alert.condition)
+  const [targetPrice, setTargetPrice] = useState(alert.target_price ?? '')
+  const [error, setError]             = useState('')
+  const [saving, setSaving]           = useState(false)
+
+  const save = async () => {
+    if (!productId)                         { setError('Select a product'); return }
+    if (condition !== 'any_change' && condition !== 'any_drop' && !targetPrice) { setError('Enter a target price'); return }
+    setSaving(true)
+    try {
+      const updated = await pb.collection('alerts').update(alert.id, {
+        product:      productId,
+        condition,
+        target_price: (condition === 'any_change' || condition === 'any_drop') ? null : parseFloat(targetPrice),
+      })
+      onSaved(updated)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Portal><div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span className="modal-title">Edit Alert</span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="field">
+          <label>Product</label>
+          <select value={productId} onChange={e => setProductId(e.target.value)}>
+            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Condition</label>
+          <select value={condition} onChange={e => setCondition(e.target.value)}>
+            <option value="below">Price drops below</option>
+            <option value="above">Price rises above</option>
+            <option value="any_change">Any price change</option>
+            <option value="any_drop">Any price drop</option>
+          </select>
+        </div>
+        {condition !== 'any_change' && condition !== 'any_drop' && (
+          <div className="field">
+            <label>Target Price ($)</label>
+            <input type="number" step="0.01" min="0" value={targetPrice} onChange={e => setTargetPrice(e.target.value)} placeholder="0.00" />
+          </div>
+        )}
+
+        {error && <p className="error-msg">{error}</p>}
+
+        <div className="modal-footer">
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div></Portal>
   )
 }
 

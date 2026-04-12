@@ -12,6 +12,7 @@ export default function Settings() {
   const [channels, setChannels] = useState([])
   const [loading, setLoading]   = useState(true)
   const [showAdd, setShowAdd]   = useState(false)
+  const [editing, setEditing]   = useState(null) // channel object being edited
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -90,6 +91,7 @@ export default function Settings() {
                     <span className="toggle-slider" />
                   </label>
                   <button className="btn-ghost btn-sm" onClick={() => testChannel(ch)}>Test</button>
+                  <button className="btn-ghost btn-sm" onClick={() => setEditing(ch)} title="Edit channel">✎</button>
                   <button className="btn-danger btn-sm" onClick={() => deleteChannel(ch.id)}>✕</button>
                 </div>
               </div>
@@ -104,7 +106,94 @@ export default function Settings() {
           onAdded={(ch) => { setChannels(prev => [...prev, ch]); setShowAdd(false) }}
         />
       )}
+      {editing && (
+        <EditChannelModal
+          channel={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => { setChannels(prev => prev.map(c => c.id === updated.id ? updated : c)); setEditing(null) }}
+        />
+      )}
     </>
+  )
+}
+
+function EditChannelModal({ channel, onClose, onSaved }) {
+  const [type, setType]     = useState(channel.type)
+  const [name, setName]     = useState(channel.name)
+  const [config, setConfig] = useState(channel.config || {})
+  const [error, setError]   = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const fields = CHANNEL_TYPES[type]?.fields || []
+
+  const save = async () => {
+    if (!name.trim()) { setError('Name is required'); return }
+    for (const f of fields) {
+      if (!f.optional && !config[f.key]?.trim()) { setError(`${f.label} is required`); return }
+    }
+    setSaving(true)
+    try {
+      const updated = await pb.collection('notification_channels').update(channel.id, {
+        type,
+        name: name.trim(),
+        config,
+      })
+      onSaved(updated)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Portal><div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span className="modal-title">Edit Notification Channel</span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="field">
+          <label>Channel Type</label>
+          <select value={type} onChange={e => { setType(e.target.value); setConfig({}) }}>
+            {Object.entries(CHANNEL_TYPES).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Display Name</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder={`My ${CHANNEL_TYPES[type]?.label}`} />
+        </div>
+
+        {fields.map(f => (
+          <div key={f.key} className="field">
+            <label>{f.label}</label>
+            <input
+              type={f.type || 'text'}
+              value={config[f.key] || ''}
+              onChange={e => setConfig(prev => ({ ...prev, [f.key]: e.target.value }))}
+            />
+          </div>
+        ))}
+
+        {type === 'pushbullet' && (
+          <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:12}}>
+            Get your API key at <a href="https://www.pushbullet.com/#settings" target="_blank" rel="noopener">pushbullet.com/settings</a> → Access Tokens.
+          </div>
+        )}
+
+        {error && <p className="error-msg">{error}</p>}
+
+        <div className="modal-footer">
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div></Portal>
   )
 }
 

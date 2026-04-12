@@ -109,7 +109,17 @@ async function evaluateAlerts(retailer, price, previousPrice, currency) {
     if (alert.condition === 'below' && price <= alert.target_price)       triggered = true
     if (alert.condition === 'above' && price >= alert.target_price)       triggered = true
     if (alert.condition === 'any_change' && previousPrice !== null && price !== previousPrice) triggered = true
-    if (alert.condition === 'any_drop'   && previousPrice !== null && price < previousPrice)  triggered = true
+    if (alert.condition === 'any_drop') {
+      // Trigger only when new price beats the current best across all other retailers
+      try {
+        const allRetailers = await pbList('retailers', `product="${retailer.product}" && enabled=true`)
+        const otherPrices = allRetailers
+          .filter(r => r.id !== retailer.id && r.last_price)
+          .map(r => r.last_price)
+        const currentLowest = otherPrices.length ? Math.min(...otherPrices) : (previousPrice ?? null)
+        if (currentLowest !== null && price < currentLowest) triggered = true
+      } catch { /* skip */ }
+    }
 
     if (!triggered) continue
 
@@ -131,8 +141,11 @@ async function evaluateAlerts(retailer, price, previousPrice, currency) {
       channels = await pbList('notification_channels', `user="${retailer.user}" && enabled=true`)
     } catch { continue }
 
+    const appUrl = (process.env.APP_URL || '').replace(/\/$/, '')
     const notification = {
       product:       productName,
+      product_id:    retailer.product,
+      product_url:   appUrl ? `${appUrl}/#products/${retailer.product}` : null,
       retailer:      retailer.name,
       retailer_url:  retailer.url,
       price,

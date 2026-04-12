@@ -35,8 +35,8 @@ docker compose up -d --build price-track
 
 ## ⚠️ ALWAYS Back Up Before Schema Changes
 ```bash
-BACKUP=./data.bak.$(date +%Y%m%d_%H%M%S)
-cp -r ./data "$BACKUP"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+tar -czf /data/price-track/backups/${TIMESTAMP}.tar.gz -C /data/price-track --exclude=backups --exclude=storage --exclude=venv .
 ```
 
 ## Schema Changes — Preferred Method: Wipe + Restore
@@ -46,15 +46,21 @@ cp -r ./data "$BACKUP"
 1. Add new field to `pocketbase/entrypoint.sh`
 2. Back up and checkpoint WAL:
    ```bash
-   BACKUP=./data.bak.$(date +%Y%m%d_%H%M%S)
-   cp -r ./data "$BACKUP"
-   docker run --rm -v "$BACKUP":/data alpine sh -c \
+   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+   tar -czf /data/price-track/backups/${TIMESTAMP}.tar.gz -C /data/price-track --exclude=backups --exclude=storage --exclude=venv .
+   docker run --rm -v /data/price-track:/data alpine sh -c \
      'apk add -q sqlite && sqlite3 /data/data.db "PRAGMA wal_checkpoint(TRUNCATE);"'
    ```
-3. Read existing data from backup
+3. Read existing data from backup:
+   ```bash
+   tar -tzf /data/price-track/backups/${TIMESTAMP}.tar.gz  # list contents
+   tar -xzf /data/price-track/backups/${TIMESTAMP}.tar.gz -C /tmp/pb-restore
+   docker run --rm -v /tmp/pb-restore:/data alpine sh -c \
+     'apk add -q sqlite && sqlite3 /data/data.db "SELECT * FROM <table>;"'
+   ```
 4. Wipe and reinitialise:
    ```bash
-   docker run --rm -v ./data:/data alpine sh -c \
+   docker run --rm -v /data/price-track:/data alpine sh -c \
      "rm -f /data/data.db /data/data.db-shm /data/data.db-wal /data/logs.db /data/logs.db-shm /data/logs.db-wal /data/types.d.ts"
    docker compose up -d --force-recreate price-track
    ```
