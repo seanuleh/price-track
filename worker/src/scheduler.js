@@ -106,19 +106,22 @@ async function evaluateAlerts(retailer, price, previousPrice, currency) {
   for (const alert of alerts) {
     let triggered = false
 
-    if (alert.condition === 'below' && price <= alert.target_price)       triggered = true
-    if (alert.condition === 'above' && price >= alert.target_price)       triggered = true
+    // below/above: only trigger on threshold crossing, not every scrape while condition holds
+    if (alert.condition === 'below' && price <= alert.target_price && (previousPrice === null || previousPrice > alert.target_price)) triggered = true
+    if (alert.condition === 'above' && price >= alert.target_price && (previousPrice === null || previousPrice < alert.target_price)) triggered = true
     if (alert.condition === 'any_change' && previousPrice !== null && price !== previousPrice) triggered = true
     if (alert.condition === 'any_drop') {
-      // Trigger only when new price beats the current best across all other retailers
-      try {
-        const allRetailers = await pbList('retailers', `product="${retailer.product}" && enabled=true`)
-        const otherPrices = allRetailers
-          .filter(r => r.id !== retailer.id && r.last_price)
-          .map(r => r.last_price)
-        const currentLowest = otherPrices.length ? Math.min(...otherPrices) : (previousPrice ?? null)
-        if (currentLowest !== null && price < currentLowest) triggered = true
-      } catch { /* skip */ }
+      // Require actual drop from this retailer's previous price AND new price beats all others
+      if (previousPrice !== null && price < previousPrice) {
+        try {
+          const allRetailers = await pbList('retailers', `product="${retailer.product}" && enabled=true`)
+          const otherPrices = allRetailers
+            .filter(r => r.id !== retailer.id && r.last_price)
+            .map(r => r.last_price)
+          const currentLowest = otherPrices.length ? Math.min(...otherPrices) : previousPrice
+          if (price < currentLowest) triggered = true
+        } catch { /* skip */ }
+      }
     }
 
     if (!triggered) continue
