@@ -98,7 +98,7 @@ export async function checkRetailer(retailer) {
 async function evaluateAlerts(retailer, price, previousPrice, currency) {
   let alerts
   try {
-    alerts = await pbList('alerts', `product="${retailer.product}" && enabled=true`)
+    alerts = await pbList('alerts', `product="${retailer.product}" && enabled=true && user="${retailer.user}"`)
   } catch {
     return
   }
@@ -114,7 +114,7 @@ async function evaluateAlerts(retailer, price, previousPrice, currency) {
       // Require actual drop from this retailer's previous price AND new price beats all others
       if (previousPrice !== null && price < previousPrice) {
         try {
-          const allRetailers = await pbList('retailers', `product="${retailer.product}" && enabled=true`)
+          const allRetailers = await pbList('retailers', `product="${retailer.product}" && enabled=true && user="${retailer.user}"`)
           const otherPrices = allRetailers
             .filter(r => r.id !== retailer.id && r.last_price)
             .map(r => r.last_price)

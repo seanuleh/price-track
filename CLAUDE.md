@@ -3,7 +3,7 @@
 ## Stack
 - React + Vite frontend, PocketBase 0.22.22 backend, single Docker container
 - Node.js worker (runs inside same container) — Playwright scraping + Claude CLI AI + scheduled checks
-- Auth: PocketBase native auth. Frontend currently has no login form — it expects a valid `pocketbase_auth` token in localStorage. See README for auth options.
+- Auth: Cloudflare Access → cfAuth sidecar auto-creates PB users and injects token into localStorage. No login form needed.
 
 ## Deployment
 Rebuild and redeploy:
@@ -30,41 +30,38 @@ docker compose up -d --build price-track
 ## Adding a New Notifier
 1. Create `worker/src/notifiers/<type>.js` — export `async function send(config, notification)`
 2. Register in `worker/src/notifiers/index.js` → `NOTIFIERS` map
-3. Add the type to `notification_channels` collection's `type` select field options (admin API or wipe+restore)
+3. Add the type via a JS migration (update the `notification_channels` select field options)
 4. Add UI fields in `frontend/src/pages/Settings.jsx` → `CHANNEL_TYPES`
 
-## ⚠️ ALWAYS Back Up Before Schema Changes
-```bash
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-tar -czf /data/price-track/backups/${TIMESTAMP}.tar.gz -C /data/price-track --exclude=backups --exclude=storage --exclude=venv .
-```
+## Schema Changes — JS Migrations
+All schema changes go in `pocketbase/pb_migrations/` as JS migration files. PocketBase applies unapplied migrations automatically on startup. Applied migrations are tracked in `_migrations` in the DB — never re-run.
 
-## Schema Changes — Preferred Method: Wipe + Restore
-**Never PATCH `/api/collections` from entrypoint.sh** — it runs on every restart.
+**To add/change schema:**
+1. Write a new migration file — use the current Unix timestamp as the filename prefix:
+   ```bash
+   date +%s  # get timestamp
+   ```
+   File: `pocketbase/pb_migrations/[timestamp]_description.js`
+   ```js
+   /// <reference path="../pb_data/types.d.ts" />
+   migrate((db) => {
+     const dao = new Dao(db)
+     const collection = dao.findCollectionByNameOrId("collection_name")
+     collection.schema.addField(new SchemaField({
+       "name": "field_name", "type": "text", "required": false, "options": {}
+     }))
+     return dao.saveCollection(collection)
+   }, (db) => {
+     // down: reverse the change
+     const dao = new Dao(db)
+     const collection = dao.findCollectionByNameOrId("collection_name")
+     collection.schema.removeField(collection.schema.getFieldByName("field_name").id)
+     return dao.saveCollection(collection)
+   })
+   ```
+2. Rebuild: `docker compose up -d --build price-track`
 
-**Safe procedure:**
-1. Add new field to `pocketbase/entrypoint.sh`
-2. Back up and checkpoint WAL:
-   ```bash
-   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-   tar -czf /data/price-track/backups/${TIMESTAMP}.tar.gz -C /data/price-track --exclude=backups --exclude=storage --exclude=venv .
-   docker run --rm -v /data/price-track:/data alpine sh -c \
-     'apk add -q sqlite && sqlite3 /data/data.db "PRAGMA wal_checkpoint(TRUNCATE);"'
-   ```
-3. Read existing data from backup:
-   ```bash
-   tar -tzf /data/price-track/backups/${TIMESTAMP}.tar.gz  # list contents
-   tar -xzf /data/price-track/backups/${TIMESTAMP}.tar.gz -C /tmp/pb-restore
-   docker run --rm -v /tmp/pb-restore:/data alpine sh -c \
-     'apk add -q sqlite && sqlite3 /data/data.db "SELECT * FROM <table>;"'
-   ```
-4. Wipe and reinitialise:
-   ```bash
-   docker run --rm -v /data/price-track:/data alpine sh -c \
-     "rm -f /data/data.db /data/data.db-shm /data/data.db-wal /data/logs.db /data/logs.db-shm /data/logs.db-wal /data/types.d.ts"
-   docker compose up -d --force-recreate price-track
-   ```
-5. Re-insert data via SQL file
+No backup needed before schema changes — migrations are transactional and non-destructive. The existing data in the volume is untouched; only the collection definition changes.
 
 ## Get an Admin Token (inside container)
 ```bash

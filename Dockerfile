@@ -23,9 +23,10 @@ RUN wget -q "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VE
 # Copy frontend build
 COPY --from=frontend-builder /app/dist /pb/pb_public
 
-# Copy PocketBase entrypoint
+# Copy PocketBase entrypoint and migrations
 COPY pocketbase/entrypoint.sh /pb/entrypoint.sh
 RUN chmod +x /pb/entrypoint.sh
+COPY pocketbase/pb_migrations/ /pb/pb_migrations/
 
 # Install Node worker dependencies
 WORKDIR /worker

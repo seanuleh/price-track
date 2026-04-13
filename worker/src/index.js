@@ -2,7 +2,7 @@ import express from 'express'
 import { startScheduler, checkRetailer, runCheckAll } from './scheduler.js'
 import { scrapePrice, detectPriceSelector, fetchProductMeta, findAustralianRetailers, findAustralianRetailersStream } from './scraper.js'
 import { sendNotification } from './notifiers/index.js'
-import { pbList, pbUpdate } from './pb.js'
+import { pbList, pbUpdate, getUserFromToken } from './pb.js'
 
 const app = express()
 app.use(express.json())
@@ -26,8 +26,12 @@ app.post('/api/price-track/scrape', requireAuth, async (req, res) => {
   if (!retailer_id) return res.status(400).json({ error: 'retailer_id required' })
 
   try {
+    const userId = await getUserFromToken(req.headers.authorization)
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+
     const retailers = await pbList('retailers', `id="${retailer_id}"`)
     if (!retailers.length) return res.status(404).json({ error: 'Retailer not found' })
+    if (retailers[0].user !== userId) return res.status(403).json({ error: 'Forbidden' })
 
     await checkRetailer(retailers[0])
     res.json({ ok: true })
@@ -133,8 +137,12 @@ app.post('/api/price-track/test-notification', requireAuth, async (req, res) => 
   if (!channel_id) return res.status(400).json({ error: 'channel_id required' })
 
   try {
+    const userId = await getUserFromToken(req.headers.authorization)
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+
     const channels = await pbList('notification_channels', `id="${channel_id}"`)
     if (!channels.length) return res.status(404).json({ error: 'Channel not found' })
+    if (channels[0].user !== userId) return res.status(403).json({ error: 'Forbidden' })
 
     await sendNotification(channels[0], {
       product: 'Test Product',
@@ -161,6 +169,16 @@ app.post('/api/price-track/test-notification', requireAuth, async (req, res) => 
  */
 app.post('/api/price-track/check-all', requireAuth, async (req, res) => {
   const { product_id } = req.body
+  if (product_id) {
+    try {
+      const userId = await getUserFromToken(req.headers.authorization)
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+      const products = await pbList('products', `id="${product_id}"`)
+      if (!products.length || products[0].user !== userId) return res.status(403).json({ error: 'Forbidden' })
+    } catch (e) {
+      return res.status(500).json({ error: e.message })
+    }
+  }
   runCheckAll(product_id).catch(e => console.error('[api] check-all error:', e.message))
   res.json({ ok: true, message: 'Check run started' })
 })

@@ -86,6 +86,17 @@ export async function pbCreate(collection, body) {
   return data
 }
 
+export async function getUserFromToken(token) {
+  if (!token) return null
+  const res = await fetch(`${PB_URL}/api/collections/users/auth-refresh`, {
+    method: 'POST',
+    headers: { Authorization: token },
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.record?.id || null
+}
+
 export async function pbUpdate(collection, id, body) {
   const token = await getToken()
   const res = await fetch(`${PB_URL}/api/collections/${collection}/records/${id}`, {
