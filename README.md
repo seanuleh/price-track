@@ -12,6 +12,7 @@ A self-hosted price tracking app. Track products across multiple Australian reta
 - Bot protection detection — retailers that block scraping are automatically disabled
 - Alerts: notify when price drops below a target, rises above, drops at all, or any change
 - Notifications via Pushbullet, webhook, or email
+- Multi-user: per-user data isolation enforced at the database level
 - Mobile-optimised UI
 
 ## Stack
@@ -19,7 +20,7 @@ A self-hosted price tracking app. Track products across multiple Australian reta
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18 + Vite + Recharts |
-| Backend | PocketBase 0.23 (SQLite) |
+| Backend | PocketBase 0.22.22 (SQLite) |
 | Scraper | Playwright (Chromium → Firefox → WebKit fallback chain) |
 | AI (vision) | Ollama + qwen2.5vl (price detection from screenshots) |
 | AI (text) | Claude CLI — Haiku (retailer discovery, product metadata) |
@@ -74,9 +75,11 @@ Open `http://localhost:8090` in your browser.
 
 ### 3. Log in
 
-The app uses PocketBase's native auth. There is no login screen in the frontend — authentication is handled by setting a valid `pocketbase_auth` token in `localStorage`.
+There is no login screen in the frontend. Authentication is handled by setting a valid `pocketbase_auth` token in `localStorage`.
 
-**Easiest approach:** log in via the PocketBase admin UI at `http://localhost:8090/_/`, then copy the token from the network tab into `localStorage.pocketbase_auth` in your browser console. Alternatively, use the PocketBase JS SDK to authenticate and the token is stored automatically.
+**Easiest approach:** create a regular user via the PocketBase admin UI at `http://localhost:8090/_/`, authenticate via the PocketBase JS SDK (or the REST API), and the token is stored automatically. Or copy the token from the network tab into `localStorage.pocketbase_auth` in the browser console.
+
+Each user only sees their own data — products, retailers, alerts, and notification channels are scoped to the authenticated user.
 
 ---
 
@@ -150,7 +153,7 @@ Configure notification channels in the **Settings** page.
 
 1. Create `worker/src/notifiers/<type>.js` — export `async function send(config, notification)`
 2. Register it in `worker/src/notifiers/index.js`
-3. Add the type to the `notification_channels` collection's `type` select field (via PocketBase admin or schema wipe/restore)
+3. Add the type via a JS migration — update the `notification_channels` select field options in `pocketbase/pb_migrations/`
 4. Add UI config fields in `frontend/src/pages/Settings.jsx` → `CHANNEL_TYPES`
 
 ---
