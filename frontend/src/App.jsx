@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Products from './pages/Products.jsx'
 import Alerts from './pages/Alerts.jsx'
 import Settings from './pages/Settings.jsx'
+import Metrics from './pages/Metrics.jsx'
 import pb from './pb.js'
 
 function parseHash() {
@@ -31,9 +32,19 @@ const IconSettings = () => (
   </svg>
 )
 
+const IconMetrics = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="20" x2="18" y2="10"/>
+    <line x1="12" y1="20" x2="12" y2="4"/>
+    <line x1="6" y1="20" x2="6" y2="14"/>
+    <line x1="2" y1="20" x2="22" y2="20"/>
+  </svg>
+)
+
 const PAGES = [
   { id: 'products', label: 'Products', Icon: IconProducts },
   { id: 'alerts',   label: 'Alerts',   Icon: IconAlerts   },
+  { id: 'metrics',  label: 'Metrics',  Icon: IconMetrics  },
   { id: 'settings', label: 'Settings', Icon: IconSettings },
 ]
 
@@ -104,6 +115,7 @@ export default function App() {
               >
                 {p.id === 'products' && <Products selectedProductId={productId} onProductSelect={handleProductSelect} />}
                 {p.id === 'alerts'   && <Alerts />}
+                {p.id === 'metrics'  && <Metrics />}
                 {p.id === 'settings' && <Settings />}
               </div>
             )
@@ -120,7 +132,7 @@ export default function App() {
         </div>
       )}
       <nav className="bottom-nav">
-        <div className="bottom-nav-indicator" style={{left: `calc(${PAGES.findIndex(p => p.id === page)} * (100% / 3) + (100% / 12))`}} />
+        <div className="bottom-nav-indicator" style={{left: `calc(${PAGES.findIndex(p => p.id === page)} * (100% / ${PAGES.length}) + (100% / ${PAGES.length * 2}))`, width: `calc(100% / ${PAGES.length * 2})`}} />
         {PAGES.map(p => (
           <button
             key={p.id}

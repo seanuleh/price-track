@@ -51,26 +51,49 @@ export async function checkRetailer(retailer) {
 
   await pbUpdate('retailers', retailer.id, { is_scraping: true }).catch(() => {})
 
+  const startTime = Date.now()
   let result
   try {
     result = await scrapePrice(retailer.url, retailer.selector)
   } catch (e) {
     const isBotBlocked = /bot protection|captcha|blocked|403|429/i.test(e.message)
+    const duration_ms = Date.now() - startTime
     await pbUpdate('retailers', retailer.id, {
       is_scraping: false,
-      ...(isBotBlocked ? { enabled: false } : {}),
+      enabled: false,
     }).catch(() => {})
     if (isBotBlocked) {
       console.warn(`[scheduler]   → Bot protection detected for ${retailer.name} — disabling retailer`)
+    } else {
+      console.warn(`[scheduler]   → Scrape failed for ${retailer.name} — disabling retailer: ${e.message}`)
     }
+    await pbCreate('scrape_logs', {
+      retailer:     retailer.id,
+      product:      retailer.product,
+      status:       isBotBlocked ? 'blocked' : 'error',
+      duration_ms,
+      error_reason: e.message.slice(0, 500),
+      user:         retailer.user,
+    }).catch(() => {})
     throw e
   }
 
   const { price, currency, inStock, selector: detectedSelector } = result
+  const duration_ms = Date.now() - startTime
 
-  console.log(`[scheduler]   → $${price} (${currency}) in_stock=${inStock}`)
+  console.log(`[scheduler]   → $${price} (${currency}) in_stock=${inStock} (${duration_ms}ms)`)
 
   const previousPrice = retailer.last_price || null
+
+  // Persist scrape log
+  await pbCreate('scrape_logs', {
+    retailer:    retailer.id,
+    product:     retailer.product,
+    status:      'success',
+    duration_ms,
+    price,
+    user:        retailer.user,
+  }).catch(() => {})
 
   // Persist price history
   await pbCreate('price_history', {

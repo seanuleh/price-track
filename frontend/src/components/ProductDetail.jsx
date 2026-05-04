@@ -250,7 +250,6 @@ export default function ProductDetail({ product, retailers, history, historyLoad
                 <th className="sortable" onClick={() => toggleSort('price')}>
                   Current Price {sortCol === 'price' ? (sortAsc ? '▲' : '▼') : ''}
                 </th>
-                <th className="col-last-checked">Last Checked</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -267,6 +266,9 @@ export default function ProductDetail({ product, retailers, history, historyLoad
                     <td>
                       <div style={{fontWeight:500}}>{r.name}</div>
                       {r.url && <a href={r.url} target="_blank" rel="noopener" style={{fontSize:11,color:'var(--text-muted)'}}>View ↗</a>}
+                      <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>
+                        {r.last_checked ? new Date(r.last_checked).toLocaleString('en-AU',{dateStyle:'short',timeStyle:'short'}) : 'Never'}
+                      </div>
                     </td>
                     <td>
                       {r.last_price
@@ -279,9 +281,6 @@ export default function ProductDetail({ product, retailers, history, historyLoad
                           </>
                         : <span style={{color:'var(--text-muted)'}}>—</span>
                       }
-                    </td>
-                    <td className="col-last-checked" style={{color:'var(--text-muted)',fontSize:12}}>
-                      {r.last_checked ? new Date(r.last_checked).toLocaleString('en-AU',{dateStyle:'short',timeStyle:'short'}) : 'Never'}
                     </td>
                     <td>
                       <label className="toggle">
@@ -318,7 +317,7 @@ export default function ProductDetail({ product, retailers, history, historyLoad
                   </tr>
                   {scrapeErr[r.id] && (
                     <tr className="error-row">
-                      <td colSpan={5} style={{padding:'4px 14px 10px',border:'none',color:'var(--danger)',fontSize:12}}>
+                      <td colSpan={4} style={{padding:'4px 14px 10px',border:'none',color:'var(--danger)',fontSize:12}}>
                         {scrapeErr[r.id]}
                       </td>
                     </tr>

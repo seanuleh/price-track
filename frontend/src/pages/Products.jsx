@@ -72,6 +72,9 @@ export default function Products({ selectedProductId, onProductSelect }) {
     unsubs.forEach(fn => fn())
     unsubs.length = 0
 
+    // Catch any updates missed while unsubscribed (navigated away)
+    loadSilent()
+
     pb.collection('retailers').subscribe('*', (e) => {
       if (e.action === 'update') {
         setRetailers(prev => prev.map(r => r.id === e.record.id ? e.record : r))
@@ -94,7 +97,7 @@ export default function Products({ selectedProductId, onProductSelect }) {
       unsubs.forEach(fn => fn())
       unsubs.length = 0
     }
-  }, [selected])
+  }, [selected, loadSilent])
 
   // Best price per product
   const bestPrice = (productId) => {
