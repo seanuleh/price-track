@@ -9,6 +9,7 @@ export default function EditProductModal({ product, onClose, onSaved }) {
   const [model, setModel] = useState(product.model || '')
   const [image, setImage] = useState(product.image_url || '')
   const [desc, setDesc]   = useState(product.description || '')
+  const [interval, setInterval_] = useState(product.check_interval_minutes || '')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -24,6 +25,7 @@ export default function EditProductModal({ product, onClose, onSaved }) {
         model: model.trim() || null,
         image_url: image.trim() || null,
         description: desc.trim() || null,
+        check_interval_minutes: interval ? parseInt(interval, 10) : null,
       })
       onSaved()
     } catch (e) {
@@ -67,6 +69,18 @@ export default function EditProductModal({ product, onClose, onSaved }) {
         <div className="field">
           <label>Description</label>
           <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3} />
+        </div>
+        <div className="field">
+          <label>Check Interval</label>
+          <select value={interval} onChange={e => setInterval_(e.target.value)}>
+            <option value="">Global default</option>
+            <option value="30">Every 30 minutes</option>
+            <option value="60">Every hour</option>
+            <option value="120">Every 2 hours</option>
+            <option value="240">Every 4 hours</option>
+            <option value="720">Every 12 hours</option>
+            <option value="1440">Every 24 hours</option>
+          </select>
         </div>
         {error && <p className="error-msg">{error}</p>}
         <div className="modal-footer">

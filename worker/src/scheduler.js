@@ -12,7 +12,7 @@ export async function runCheckAll(productId) {
     return
   }
   if (!productId) running = true
-  console.log(productId ? `[scheduler] Starting check for product ${productId}...` : '[scheduler] Starting price check run...')
+  console.log(productId ? `[scheduler] Starting check for product ${productId}...` : '[scheduler] Starting scheduled tick...')
 
   let retailers
   try {
@@ -22,6 +22,42 @@ export async function runCheckAll(productId) {
     console.error('[scheduler] Failed to fetch retailers:', e.message)
     if (!productId) running = false
     return
+  }
+
+  // On scheduled ticks (no explicit productId), filter to only retailers that are due.
+  // On manual/explicit runs, skip the due check and run all.
+  if (!productId) {
+    // Fetch products to get per-product intervals
+    let products = []
+    try {
+      products = await pbList('products', '')
+    } catch (e) {
+      console.warn('[scheduler] Failed to fetch products for interval check:', e.message)
+    }
+    const productMap = Object.fromEntries(products.map(p => [p.id, p]))
+
+    let users = []
+    try {
+      users = await pbList('users', '')
+    } catch (e) {
+      console.warn('[scheduler] Failed to fetch users for interval check:', e.message)
+    }
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]))
+
+    const now = Date.now()
+    retailers = retailers.filter(r => {
+      const product = productMap[r.product]
+      const userDefault = userMap[r.user]?.default_check_interval_minutes || CHECK_INTERVAL_MINUTES
+      const intervalMs = (product?.check_interval_minutes || userDefault) * 60 * 1000
+      if (!r.last_checked) return true
+      return now - new Date(r.last_checked).getTime() >= intervalMs
+    })
+
+    if (retailers.length === 0) {
+      console.log('[scheduler] No retailers due — skipping.')
+      running = false
+      return
+    }
   }
 
   console.log(`[scheduler] Checking ${retailers.length} retailer(s)...`)
@@ -58,14 +94,13 @@ export async function checkRetailer(retailer) {
   } catch (e) {
     const isBotBlocked = /bot protection|captcha|blocked|403|429/i.test(e.message)
     const duration_ms = Date.now() - startTime
-    await pbUpdate('retailers', retailer.id, {
-      is_scraping: false,
-      enabled: false,
-    }).catch(() => {})
+    const updatePayload = { is_scraping: false }
+    if (isBotBlocked) updatePayload.enabled = false
+    await pbUpdate('retailers', retailer.id, updatePayload).catch(() => {})
     if (isBotBlocked) {
       console.warn(`[scheduler]   → Bot protection detected for ${retailer.name} — disabling retailer`)
     } else {
-      console.warn(`[scheduler]   → Scrape failed for ${retailer.name} — disabling retailer: ${e.message}`)
+      console.warn(`[scheduler]   → Scrape failed for ${retailer.name} (transient, keeping enabled): ${e.message}`)
     }
     await pbCreate('scrape_logs', {
       retailer:     retailer.id,
@@ -193,10 +228,9 @@ async function evaluateAlerts(retailer, price, previousPrice, currency) {
 }
 
 export function startScheduler() {
-  const intervalMs = CHECK_INTERVAL_MINUTES * 60 * 1000
-  console.log(`[scheduler] Starting — will check every ${CHECK_INTERVAL_MINUTES} minute(s)`)
+  console.log(`[scheduler] Starting — base tick every 1 minute, global default interval ${CHECK_INTERVAL_MINUTES} minute(s)`)
 
   setInterval(() => {
     runCheckAll().catch(e => console.error('[scheduler] Run error:', e.message))
-  }, intervalMs)
+  }, 60 * 1000)
 }

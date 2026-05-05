@@ -8,17 +8,34 @@ const CHANNEL_TYPES = {
   email:      { label: 'Email',      fields: [{ key: 'address', label: 'Email Address', type: 'email' }] },
 }
 
+const INTERVAL_OPTIONS = [
+  { value: '', label: 'Use server default' },
+  { value: '30', label: 'Every 30 minutes' },
+  { value: '60', label: 'Every hour' },
+  { value: '120', label: 'Every 2 hours' },
+  { value: '240', label: 'Every 4 hours' },
+  { value: '720', label: 'Every 12 hours' },
+  { value: '1440', label: 'Every 24 hours' },
+]
+
 export default function Settings() {
   const [channels, setChannels] = useState([])
   const [loading, setLoading]   = useState(true)
   const [showAdd, setShowAdd]   = useState(false)
   const [editing, setEditing]   = useState(null) // channel object being edited
+  const [globalInterval, setGlobalInterval] = useState('')
+  const [intervalSaving, setIntervalSaving] = useState(false)
+  const [intervalSaved, setIntervalSaved]   = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const chs = await pb.collection('notification_channels').getFullList({ sort: 'name' })
+      const [chs, user] = await Promise.all([
+        pb.collection('notification_channels').getFullList({ sort: 'name' }),
+        pb.collection('users').getOne(pb.authStore.model?.id),
+      ])
       setChannels(chs)
+      setGlobalInterval(user.default_check_interval_minutes ? String(user.default_check_interval_minutes) : '')
     } catch (e) {
       if (e.status === 401) { pb.authStore.clear(); window.location.reload() }
     } finally {
@@ -27,6 +44,23 @@ export default function Settings() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  const saveInterval = async (val) => {
+    setGlobalInterval(val)
+    setIntervalSaving(true)
+    setIntervalSaved(false)
+    try {
+      await pb.collection('users').update(pb.authStore.model?.id, {
+        default_check_interval_minutes: val ? parseInt(val, 10) : null,
+      })
+      setIntervalSaved(true)
+      setTimeout(() => setIntervalSaved(false), 2000)
+    } catch (e) {
+      console.error('Failed to save interval:', e.message)
+    } finally {
+      setIntervalSaving(false)
+    }
+  }
 
   const deleteChannel = async (id) => {
     if (!confirm('Delete this notification channel?')) return
@@ -58,7 +92,35 @@ export default function Settings() {
   return (
     <>
       <div className="page-header">
-        <h1 className="page-title">Notification Channels</h1>
+        <h1 className="page-title">Settings</h1>
+      </div>
+
+      <div className="card" style={{marginBottom: 28, padding: '18px 20px'}}>
+        <div style={{fontWeight: 600, fontSize: 15, marginBottom: 14}}>General</div>
+        <div className="field" style={{marginBottom: 0}}>
+          <label>Default Check Interval</label>
+          <div style={{display: 'flex', alignItems: 'center', gap: 10}}>
+            <select
+              value={globalInterval}
+              onChange={e => saveInterval(e.target.value)}
+              disabled={intervalSaving}
+              style={{flex: 1}}
+            >
+              {INTERVAL_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {intervalSaving && <span className="spinner" style={{width: 14, height: 14, borderWidth: 2}} />}
+            {intervalSaved && <span style={{color: 'var(--success)', fontSize: 13}}>Saved</span>}
+          </div>
+          <div style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 5}}>
+            How often to check prices. Individual products can override this.
+          </div>
+        </div>
+      </div>
+
+      <div className="page-header" style={{marginBottom: 8}}>
+        <h2 style={{fontSize: 17, fontWeight: 600, margin: 0}}>Notification Channels</h2>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add Channel</button>
       </div>
 
