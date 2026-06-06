@@ -4,11 +4,81 @@ import pb from '../pb.js'
 import AddRetailerModal from './AddRetailerModal.jsx'
 import FindRetailersModal from './FindRetailersModal.jsx'
 import EditProductModal from './EditProductModal.jsx'
+import Portal from './Portal.jsx'
+
+function AddAlertModal({ product, onClose }) {
+  const [condition, setCondition]     = useState('any_drop')
+  const [targetPrice, setTargetPrice] = useState('')
+  const [error, setError]             = useState('')
+  const [saving, setSaving]           = useState(false)
+  const [done, setDone]               = useState(false)
+
+  const save = async () => {
+    if (condition !== 'any_change' && condition !== 'any_drop' && !targetPrice) {
+      setError('Enter a target price'); return
+    }
+    setSaving(true)
+    try {
+      await pb.collection('alerts').create({
+        product: product.id,
+        condition,
+        target_price: (condition === 'any_change' || condition === 'any_drop') ? null : parseFloat(targetPrice),
+        enabled: true,
+        user: pb.authStore.model?.id,
+      })
+      setDone(true)
+      setTimeout(onClose, 900)
+    } catch (e) {
+      setError(e.message)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-header">
+            <span className="modal-title">Add Alert — {product.name}</span>
+            <button className="modal-close" onClick={onClose}>×</button>
+          </div>
+
+          <div className="field">
+            <label>Condition</label>
+            <select value={condition} onChange={e => setCondition(e.target.value)}>
+              <option value="below">Price drops below</option>
+              <option value="above">Price rises above</option>
+              <option value="any_change">Any price change</option>
+              <option value="any_drop">Any price drop</option>
+            </select>
+          </div>
+          {condition !== 'any_change' && condition !== 'any_drop' && (
+            <div className="field">
+              <label>Target Price ($)</label>
+              <input type="number" step="0.01" min="0" value={targetPrice} onChange={e => setTargetPrice(e.target.value)} placeholder="0.00" autoFocus />
+            </div>
+          )}
+
+          {error && <p className="error-msg">{error}</p>}
+          {done && <p style={{ color: 'var(--success)', fontSize: 13 }}>Alert created!</p>}
+
+          <div className="modal-footer">
+            <button className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" onClick={save} disabled={saving || done}>
+              {saving ? 'Saving…' : 'Create Alert'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  )
+}
 
 export default function ProductDetail({ product, retailers, history, historyLoading, onBack, onUpdated, onDeleted }) {
   const [showAddRetailer, setShowAddRetailer]   = useState(false)
   const [showFindRetailers, setShowFindRetailers] = useState(false)
   const [showEdit, setShowEdit]                 = useState(false)
+  const [showAddAlert, setShowAddAlert]         = useState(false)
   const [scraping, setScraping]             = useState({})
   const [scrapingAll, setScrapingAll]       = useState(false)
   const [scrapeErr, setScrapeErr]           = useState({})
@@ -134,6 +204,7 @@ export default function ProductDetail({ product, retailers, history, historyLoad
           All products
         </button>
         <div className="detail-actions">
+          <button className="btn-ghost btn-sm" onClick={() => setShowAddAlert(true)}>+ Alert</button>
           <button className="btn-ghost btn-sm" onClick={() => setShowEdit(true)}>Edit</button>
           <button className="btn-danger btn-sm" onClick={deleteProduct}>Delete</button>
         </div>
@@ -335,6 +406,10 @@ export default function ProductDetail({ product, retailers, history, historyLoad
           onClose={() => setShowAddRetailer(false)}
           onAdded={async () => { setShowAddRetailer(false); await onUpdated() }}
         />
+      )}
+
+      {showAddAlert && (
+        <AddAlertModal product={product} onClose={() => setShowAddAlert(false)} />
       )}
 
       {showEdit && (

@@ -720,7 +720,7 @@ label {
   .product-row-name { max-width: calc(100vw - 160px); }
 
   .detail-top-bar { gap: 8px; }
-  .detail-actions .btn-ghost { display: none; }
+  .detail-actions .btn-ghost { display: inline-flex; font-size: 11px; padding: 4px 8px; }
   .detail-header { gap: 12px; max-width: 100%; align-items: center; }
   .detail-img { width: 90px; height: 90px; min-width: 90px; padding: 6px; }
   .detail-name { font-size: 16px; line-height: 1.25; margin-bottom: 0; }
