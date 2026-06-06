@@ -12,13 +12,19 @@ echo "[entrypoint] Starting PocketBase..."
 $PB_BIN serve --http=0.0.0.0:8090 --dir="$DATA_DIR" --publicDir="/pb/pb_public" &
 PB_PID=$!
 
+# Start virtual display for headed Chrome (bypasses bot detection)
+echo "[entrypoint] Starting Xvfb..."
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
+XVFB_PID=$!
+export DISPLAY=:99
+
 # Start Node worker in background
 echo "[entrypoint] Starting worker..."
-cd /worker && node src/index.js &
+cd /worker && DISPLAY=:99 node src/index.js &
 WORKER_PID=$!
 
 # If either process dies, kill the other and exit
 wait -n $PB_PID $WORKER_PID
 echo "[entrypoint] A process exited. Shutting down..."
-kill $PB_PID $WORKER_PID 2>/dev/null || true
+kill $PB_PID $WORKER_PID $XVFB_PID 2>/dev/null || true
 wait

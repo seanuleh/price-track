@@ -51,7 +51,7 @@ export default function Metrics() {
     setLoading(true)
     try {
       const [lg, rt, pr] = await Promise.all([
-        pb.collection('scrape_logs').getFullList({ sort: '-created', perPage: 500, expand: 'retailer,product' }),
+        pb.collection('scrape_logs').getList(1, 500, { sort: '-created', expand: 'retailer,product' }).then(r => r.items),
         pb.collection('retailers').getFullList({ sort: 'name', expand: 'product' }),
         pb.collection('products').getFullList({ sort: 'name' }),
       ])

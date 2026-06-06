@@ -2,12 +2,22 @@ import { chromium as chromiumExtra } from 'playwright-extra'
 import { firefox, webkit } from 'playwright'
 import StealthPlugin from 'puppeteer-extra-plugin-stealth'
 import { spawn } from 'child_process'
+import { createCuimpHttp } from 'cuimp'
 
 chromiumExtra.use(StealthPlugin())
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || '/usr/local/bin/claude'
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://ollama:11434'
 const VISION_MODEL = process.env.VISION_MODEL || 'qwen2.5vl:7b'
+const TEXT_MODEL = process.env.TEXT_MODEL || 'qwen2.5:7b'
+
+const cuimp = createCuimpHttp({
+  descriptor: { browser: 'chrome', version: '116' },
+  headers: {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-AU,en;q=0.9',
+  },
+})
 
 function callClaude(prompt, { tools } = {}) {
   return new Promise((resolve, reject) => {
@@ -46,8 +56,19 @@ let browser = null
 async function getBrowser() {
   if (!browser || !browser.isConnected()) {
     browser = await chromiumExtra.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      headless: false,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-blink-features=AutomationControlled',
+        '--exclude-switches=enable-automation',
+        '--disable-automation',
+        '--disable-infobars',
+        '--window-size=1920,1080',
+        '--start-maximized',
+      ],
+      ignoreDefaultArgs: ['--enable-automation'],
     })
   }
   return browser
@@ -111,6 +132,8 @@ async function scrapeWithBrowser(br, url, { overrideUA = true } = {}) {
 
     await page.waitForLoadState('networkidle').catch(() => {})
     await page.waitForTimeout(3000)
+    // Wait up to 12s for a price to appear in rendered text (JS-heavy sites lazy-render product content)
+    await page.waitForFunction(() => /\$\s*\d+/.test(document.body?.innerText || ''), { timeout: 12000 }).catch(() => {})
 
     console.log('[scraper] Vision LLM scraping:', url)
     const visionResult = await findPriceWithVision(page, url)
@@ -124,23 +147,149 @@ async function scrapeWithBrowser(br, url, { overrideUA = true } = {}) {
 }
 
 export async function scrapePrice(url, selector = null) {
-  try {
-    return await scrapeWithBrowser(await getBrowser(), url)
-  } catch (e) {
-    if (/redirected away|bot protection|ERR_HTTP2_PROTOCOL_ERROR|ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED/i.test(e.message)) {
-      console.warn(`[scraper] Chromium blocked, retrying with Firefox: ${e.message}`)
-      try {
-        return await scrapeWithBrowser(await getFirefoxBrowser(), url, { overrideUA: false })
-      } catch (e2) {
-        if (/redirected away|bot protection|ERR_HTTP2_PROTOCOL_ERROR|ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED/i.test(e2.message)) {
-          console.warn(`[scraper] Firefox blocked, retrying with WebKit: ${e2.message}`)
-          return await scrapeWithBrowser(await getWebkitBrowser(), url, { overrideUA: false })
+  return await scrapeWithCuimp(url)
+}
+
+function extractJsonLd(html) {
+  const matches = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
+  const results = []
+  for (const m of matches) {
+    try {
+      const parsed = JSON.parse(m[1])
+      const candidates = Array.isArray(parsed) ? parsed : [parsed]
+      for (const candidate of candidates) {
+        const graph = candidate['@graph'] || []
+        const items = graph.length ? graph : [candidate]
+        for (const item of items) {
+          if (['Product', 'ProductGroup'].includes(item['@type']) || item.offers || item.hasVariant) results.push(item)
         }
-        throw e2
+      }
+    } catch {}
+  }
+  return results
+}
+
+function directPriceFromJsonLd(items) {
+  for (const item of items) {
+    // ProductGroup: price lives in hasVariant[].offers
+    if (item.hasVariant) {
+      const variants = Array.isArray(item.hasVariant) ? item.hasVariant : [item.hasVariant]
+      const result = directPriceFromJsonLd(variants)
+      if (result) return result
+    }
+    const offers = item.offers
+    if (!offers) continue
+    const offerList = Array.isArray(offers) ? offers : [offers]
+    for (const offer of offerList) {
+      // Standard: offer.price
+      let price = parseFloat(offer.price)
+      let currency = offer.priceCurrency || 'AUD'
+      // Alternative: offer.priceSpecification[].price
+      if (isNaN(price) || price <= 0) {
+        const specs = Array.isArray(offer.priceSpecification) ? offer.priceSpecification : offer.priceSpecification ? [offer.priceSpecification] : []
+        for (const spec of specs) {
+          price = parseFloat(spec.price)
+          currency = spec.priceCurrency || currency
+          if (!isNaN(price) && price > 0) break
+        }
+      }
+      if (!isNaN(price) && price > 0) {
+        const inStock = !offer.availability || /InStock/i.test(offer.availability)
+        return { price, currency, inStock }
       }
     }
-    throw e
   }
+  return null
+}
+
+function stripJsonLdForLlm(items) {
+  return items.map(item => {
+    const { description, ...rest } = item
+    return rest
+  })
+}
+
+async function llmExtractPrice(content, label) {
+  const body = {
+    model: TEXT_MODEL,
+    format: {
+      type: 'object',
+      properties: {
+        price: { type: ['number', 'null'] },
+        currency: { type: 'string' },
+        in_stock: { type: 'boolean' },
+      },
+      required: ['price', 'currency', 'in_stock'],
+    },
+    messages: [
+      { role: 'system', content: 'Extract price data from product page content. price is the current selling price as a number, null if not found. currency is 3-letter ISO code defaulting to AUD. in_stock is true unless page says out of stock.' },
+      { role: 'user', content: content },
+    ],
+    stream: false,
+  }
+
+  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000),
+  })
+
+  if (!res.ok) throw new Error(`Ollama returned ${res.status}`)
+
+  const data = await res.json()
+  const text = data.message?.content || ''
+  console.log(`[scraper] LLM raw response (${label}):`, text.slice(0, 200))
+
+  const parsed = JSON.parse(text)
+  if (parsed.price === null || parsed.price === undefined) return null
+  return {
+    price: parseFloat(parsed.price),
+    currency: parsed.currency || 'AUD',
+    inStock: parsed.in_stock !== false,
+  }
+}
+
+async function scrapeWithCuimp(url) {
+  console.log('[scraper] cuimp fetching:', url)
+  const response = await cuimp.get(url)
+  const html = typeof response.data === 'string' ? response.data : String(response.data)
+
+  // 1. Try JSON-LD structured data
+  const jsonLdItems = extractJsonLd(html)
+  if (jsonLdItems.length > 0) {
+    const direct = directPriceFromJsonLd(jsonLdItems)
+    if (direct) {
+      console.log(`[scraper] JSON-LD direct extraction: $${direct.price} ${direct.currency}`)
+      return direct
+    }
+    console.log('[scraper] JSON-LD has no direct price, feeding stripped JSON-LD to LLM')
+    const stripped = stripJsonLdForLlm(jsonLdItems)
+    const result = await llmExtractPrice(JSON.stringify(stripped).slice(0, 8000), 'json-ld')
+    if (result) return result
+    console.warn('[scraper] JSON-LD LLM extraction failed, falling back to raw text')
+  }
+
+  // 2. Fallback: raw text
+  console.log('[scraper] Falling back to raw text extraction')
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // Centre window on first price-like pattern so large pages don't miss it
+  let excerpt = text
+  if (text.length > 16000) {
+    const priceIdx = text.search(/\$\s*[\d,]+/)
+    const start = priceIdx > 4000 ? priceIdx - 4000 : 0
+    excerpt = text.slice(start, start + 16000)
+  }
+
+  const result = await llmExtractPrice(excerpt, 'raw-text')
+  if (!result) throw new Error('LLM could not find price on page')
+  return result
 }
 
 /**
@@ -468,10 +617,58 @@ async function findPriceWithHeuristics(page) {
   return null
 }
 
+async function dismissPopups(page) {
+  // Press Escape to close any modal/popup
+  await page.keyboard.press('Escape').catch(() => {})
+  await page.waitForTimeout(300)
+
+  // Click common close/dismiss buttons
+  const closeSelectors = [
+    'button[aria-label*="close" i]',
+    'button[aria-label*="dismiss" i]',
+    '[class*="modal"] button[class*="close" i]',
+    '[class*="popup"] button[class*="close" i]',
+    '[class*="overlay"] button[class*="close" i]',
+    'button[class*="close-modal" i]',
+    '[data-dismiss="modal"]',
+    '.klaviyo-close-form',
+    '.needsclick.kl-close',
+    '[class*="pf-close"]',
+    '[class*="attentive"] button',
+  ]
+  for (const sel of closeSelectors) {
+    try {
+      const el = await page.$(sel)
+      if (el && await el.isVisible()) {
+        await el.click()
+        await page.waitForTimeout(300)
+        break
+      }
+    } catch {}
+  }
+
+  // Hide any remaining overlays/modals via JS
+  await page.evaluate(() => {
+    const MODAL_CLS = /modal|popup|overlay|dialog|attentive|klaviyo|privy|pf-widget/i
+    document.querySelectorAll('*').forEach(el => {
+      const cls = (el.className && typeof el.className === 'string') ? el.className : ''
+      if (MODAL_CLS.test(cls)) {
+        const s = window.getComputedStyle(el)
+        if (s.position === 'fixed' || s.position === 'sticky') {
+          el.style.setProperty('display', 'none', 'important')
+        }
+      }
+    })
+  }).catch(() => {})
+
+  await page.waitForTimeout(200)
+}
+
 async function findPriceWithVision(page, url) {
   // Use a tall viewport to capture more of the page without a huge full-page image
   await page.setViewportSize({ width: 1280, height: 1600 })
   await page.waitForTimeout(500)
+  await dismissPopups(page)
 
   const screenshot = await page.screenshot({ fullPage: false, type: 'png' })
   const base64 = screenshot.toString('base64')
@@ -510,18 +707,40 @@ Rules:
 
   // Extract JSON from response (may have markdown fences or extra text)
   const match = text.match(/\{[\s\S]*?\}/)
-  if (!match) return null
+  if (!match) {
+    await saveDebugScreenshot(screenshot, url, 'no-json')
+    return null
+  }
 
   try {
     const parsed = JSON.parse(match[0])
-    if (parsed.price === null || parsed.price === undefined) return null
+    if (parsed.price === null || parsed.price === undefined) {
+      await saveDebugScreenshot(screenshot, url, 'null-price')
+      return null
+    }
     return {
       price: parseFloat(parsed.price),
       currency: parsed.currency || 'AUD',
     }
   } catch {
     console.warn('[scraper] Vision LLM JSON parse failed:', match[0].slice(0, 200))
+    await saveDebugScreenshot(screenshot, url, 'parse-error')
     return null
+  }
+}
+
+async function saveDebugScreenshot(screenshot, url, reason) {
+  try {
+    const { writeFileSync, mkdirSync } = await import('fs')
+    const dir = '/tmp/vision-debug'
+    mkdirSync(dir, { recursive: true })
+    const host = new URL(url).hostname.replace(/\./g, '_')
+    const ts = Date.now()
+    const path = `${dir}/${host}_${reason}_${ts}.png`
+    writeFileSync(path, screenshot)
+    console.log(`[scraper] Debug screenshot saved: ${path}`)
+  } catch (e) {
+    console.warn('[scraper] Could not save debug screenshot:', e.message)
   }
 }
 

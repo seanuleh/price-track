@@ -8,6 +8,7 @@
     "dev":   "node --watch src/index.js"
   },
   "dependencies": {
+    "cuimp": "^2.0.0",
     "express": "^4.21.0",
     "playwright": "1.58.2",
     "playwright-extra": "^4.3.6",

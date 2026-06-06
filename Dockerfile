@@ -10,7 +10,7 @@ RUN npm run build
 FROM mcr.microsoft.com/playwright:v1.58.2-jammy
 ARG PB_VERSION=0.22.22
 
-RUN apt-get update && apt-get install -y --no-install-recommends wget unzip ca-certificates && \
+RUN apt-get update && apt-get install -y --no-install-recommends wget unzip ca-certificates xvfb && \
     rm -rf /var/lib/apt/lists/*
 
 # Install PocketBase
@@ -33,6 +33,14 @@ WORKDIR /worker
 COPY worker/package.json ./
 RUN npm install
 COPY worker/src/ ./src/
+
+# Pre-download cuimp binaries at build time to avoid runtime race conditions
+RUN node --input-type=module <<'EOF'
+import { downloadBinary } from 'cuimp'
+await downloadBinary({ browser: 'chrome', version: '116' })
+await downloadBinary({ browser: 'firefox', version: '117' })
+console.log('cuimp binaries ready')
+EOF
 
 # Copy supervisor entrypoint
 COPY entrypoint.sh /entrypoint.sh
