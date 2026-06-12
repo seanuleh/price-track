@@ -120,6 +120,30 @@ export async function checkRetailer(retailer) {
 
   const previousPrice = retailer.last_price || null
 
+  // Sanity bound: reject implausible prices against the established last_price.
+  // Bot-challenge pages (e.g. pacifichifi) flicker garbage values ($30 for a
+  // $1500 product) off a transient page state — recording them corrupts history.
+  // A genuine sale rarely exceeds ~70% off, so treat >70% drop or >5x jump as a
+  // bad scrape: don't record, keep enabled, surface as a transient error.
+  if (previousPrice && price > 0) {
+    const ratio = price / previousPrice
+    if (ratio < 0.3 || ratio > 5) {
+      await pbUpdate('retailers', retailer.id, { is_scraping: false }).catch(() => {})
+      await pbCreate('scrape_logs', {
+        retailer:     retailer.id,
+        product:      retailer.product,
+        status:       'error',
+        duration_ms,
+        price,
+        error_reason: `Implausible price $${price} vs last $${previousPrice} (ratio ${ratio.toFixed(2)}) — rejected as bad scrape`,
+        user:         retailer.user,
+      }).catch(() => {})
+      const msg = `Implausible price $${price} vs last $${previousPrice} — rejected as bad scrape`
+      console.warn(`[scheduler]   → ${msg}`)
+      throw new Error(msg)
+    }
+  }
+
   // Persist scrape log
   await pbCreate('scrape_logs', {
     retailer:    retailer.id,

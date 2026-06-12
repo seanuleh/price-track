@@ -1,6 +1,6 @@
 import express from 'express'
 import { startScheduler, checkRetailer, runCheckAll } from './scheduler.js'
-import { scrapePrice, detectPriceSelector, fetchProductMeta, findAustralianRetailers, findAustralianRetailersStream } from './scraper.js'
+import { scrapePrice, detectPriceSelector, fetchProductMeta, findAustralianRetailers, findAustralianRetailersStream, warmBrowser } from './scraper.js'
 import { sendNotification } from './notifiers/index.js'
 import { pbList, pbUpdate, getUserFromToken } from './pb.js'
 
@@ -194,6 +194,9 @@ const PORT = process.env.PORT || 3500
 app.listen(PORT, () => {
   console.log(`[worker] API server listening on :${PORT}`)
 })
+
+// Pre-warm the stealth browser so the first scrape doesn't pay cold-start
+warmBrowser()
 
 // Start the scheduler
 startScheduler()

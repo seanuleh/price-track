@@ -55,6 +55,7 @@ function callClaude(prompt, { tools } = {}) {
 let browser = null
 async function getBrowser() {
   if (!browser || !browser.isConnected()) {
+    browser = null  // drop the stale handle so a failed launch can't leave a closed browser cached
     browser = await chromiumExtra.launch({
       headless: false,
       args: [
@@ -69,7 +70,7 @@ async function getBrowser() {
         '--start-maximized',
       ],
       ignoreDefaultArgs: ['--enable-automation'],
-    })
+    }).catch(err => { browser = null; throw err })
   }
   return browser
 }
@@ -135,6 +136,28 @@ async function scrapeWithBrowser(br, url, { overrideUA = true } = {}) {
     // Wait up to 12s for a price to appear in rendered text (JS-heavy sites lazy-render product content)
     await page.waitForFunction(() => /\$\s*\d+/.test(document.body?.innerText || ''), { timeout: 12000 }).catch(() => {})
 
+    // The browser got past the block — try cheap JSON-LD/HTML extraction on the
+    // rendered HTML before falling back to a vision inference. Tolerate a
+    // mid-scrape navigation (JS challenge / region redirect) destroying the context.
+    const html = await page.content().catch(() => '')
+    const jsonLdItems = html ? extractJsonLd(html) : []
+    if (jsonLdItems.length > 0) {
+      const direct = directPriceFromJsonLd(jsonLdItems)
+      if (direct) {
+        console.log(`[scraper] JSON-LD direct extraction (browser): $${direct.price} ${direct.currency}`)
+        const inStock = await detectInStock(page)
+        return { ...direct, inStock }
+      }
+      console.log('[scraper] JSON-LD has no direct price, feeding stripped JSON-LD to LLM')
+      const stripped = stripJsonLdForLlm(jsonLdItems)
+      const result = await llmExtractPrice(JSON.stringify(stripped).slice(0, 8000), 'json-ld-browser')
+      if (result) {
+        const inStock = await detectInStock(page)
+        return { ...result, inStock }
+      }
+      console.warn('[scraper] JSON-LD LLM extraction failed, falling back to vision')
+    }
+
     console.log('[scraper] Vision LLM scraping:', url)
     const visionResult = await findPriceWithVision(page, url)
     if (!visionResult) throw new Error('Vision LLM could not find price on page')
@@ -146,8 +169,28 @@ async function scrapeWithBrowser(br, url, { overrideUA = true } = {}) {
   }
 }
 
+/**
+ * Launch the shared stealth browser at startup so the first real scrape doesn't
+ * pay the (occasionally racy) cold-start. Best-effort — failure just logs.
+ */
+export async function warmBrowser() {
+  try {
+    await getBrowser()
+    console.log('[scraper] Stealth browser pre-warmed')
+  } catch (e) {
+    console.warn('[scraper] Browser pre-warm failed (will retry lazily):', e.message)
+  }
+}
+
 export async function scrapePrice(url, selector = null) {
-  return await scrapeWithCuimp(url)
+  try {
+    return await scrapeWithCuimp(url)
+  } catch (e) {
+    // cuimp got blocked or couldn't find a price — retry with the stealth browser
+    console.warn(`[scraper] cuimp failed (${e.message}), falling back to stealth browser`)
+    const br = await getBrowser()
+    return await scrapeWithBrowser(br, url)
+  }
 }
 
 function extractJsonLd(html) {
@@ -253,6 +296,10 @@ async function llmExtractPrice(content, label) {
 async function scrapeWithCuimp(url) {
   console.log('[scraper] cuimp fetching:', url)
   const response = await cuimp.get(url)
+  const status = response.status || 0
+  if (status === 403 || status === 429 || status >= 500) {
+    throw new Error(`cuimp blocked (HTTP ${status})`)
+  }
   const html = typeof response.data === 'string' ? response.data : String(response.data)
 
   // 1. Try JSON-LD structured data
