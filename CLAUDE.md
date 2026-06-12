@@ -5,6 +5,28 @@
 - Node.js worker (runs inside same container) — Playwright scraping + Claude CLI AI + scheduled checks
 - Auth: Cloudflare Access → cfAuth sidecar auto-creates PB users and injects token into localStorage. No login form needed.
 
+## Realtime (SSE) — read before debugging "live updates not working"
+The UI relies on PocketBase realtime (SSE) for live updates — e.g. the "Check All" button is
+fire-and-forget and depends entirely on realtime to show spinners (`is_scraping`) and updated
+prices/`last_checked`. Per-retailer scrape works WITHOUT realtime (it does an explicit refetch),
+so "per-retailer updates but Check All doesn't" = realtime is broken.
+
+Three things must all be right for realtime through cf-auth + nginx (full detail in
+`cfAuth/CLAUDE.md` Lesson #8):
+1. **Frontend** (`frontend/src/main.jsx`): re-hydrate `pb.authStore` from the `pocketbase_auth`
+   localStorage key via `authStore.save()` on boot. The cfAuth sidecar writes that key directly,
+   which does NOT fire `authStore.onChange`, so the realtime client otherwise submits its
+   subscription POST unauthenticated → server applies the collection `viewRule`
+   (`user = @request.auth.id`) and silently drops every event.
+2. **cfAuth `/validate`**: must accept the `CF_Authorization` cookie (EventSource can't send the
+   `Cf-Access-Jwt-Assertion` header).
+3. **nginx**: `sub_filter_types` must be `text/html` (not `*`) so it doesn't buffer the
+   event-stream; price-track also has a dedicated `location = /api/realtime` block.
+
+**A "cancelled / 15s Initial connection" symptom on ONE machine (e.g. work laptop on a corporate
+VPN) but fine on phone/other networks is the VPN breaking SSE — not the server.** Test from a
+second network before touching any config.
+
 ## Deployment
 Rebuild and redeploy:
 ```sh
