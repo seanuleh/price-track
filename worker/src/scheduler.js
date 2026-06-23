@@ -94,7 +94,7 @@ export async function checkRetailer(retailer) {
   } catch (e) {
     const isBotBlocked = /bot protection|captcha|blocked|403|429/i.test(e.message)
     const duration_ms = Date.now() - startTime
-    const updatePayload = { is_scraping: false }
+    const updatePayload = { is_scraping: false, last_checked: new Date().toISOString() }
     if (isBotBlocked) updatePayload.enabled = false
     await pbUpdate('retailers', retailer.id, updatePayload).catch(() => {})
     if (isBotBlocked) {
@@ -128,7 +128,7 @@ export async function checkRetailer(retailer) {
   if (previousPrice && price > 0) {
     const ratio = price / previousPrice
     if (ratio < 0.3 || ratio > 5) {
-      await pbUpdate('retailers', retailer.id, { is_scraping: false }).catch(() => {})
+      await pbUpdate('retailers', retailer.id, { is_scraping: false, last_checked: new Date().toISOString() }).catch(() => {})
       await pbCreate('scrape_logs', {
         retailer:     retailer.id,
         product:      retailer.product,

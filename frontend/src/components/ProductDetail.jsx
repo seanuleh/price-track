@@ -181,6 +181,7 @@ export default function ProductDetail({ product, retailers, history, historyLoad
     { label: 'All', days: null },
   ]
   const [chartWindow, setChartWindow] = useState(() => localStorage.getItem('priceChartWindow') || '1M')
+  const [highlightedRetailer, setHighlightedRetailer] = useState(null)
 
   const data = useMemo(() => {
     const selectedDays = WINDOWS.find(w => w.label === chartWindow)?.days
@@ -259,34 +260,45 @@ export default function ProductDetail({ product, retailers, history, historyLoad
                   labelStyle={{color:'#8C857C',marginBottom:6,fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:'0.05em'}}
                   formatter={(v, name) => [`$${v.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})}`, name]}
                 />
-                {retailers.map((r, i) => (
-                  <Line
-                    key={r.id}
-                    type="stepAfter"
-                    dataKey={r.name}
-                    stroke={COLORS[i % COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{r:4,strokeWidth:0}}
-                    connectNulls
-                    isAnimationActive={true}
-                    animationDuration={600}
-                    animationEasing="ease-out"
-                  />
-                ))}
+                {retailers.map((r, i) => {
+                  const dimmed = highlightedRetailer && highlightedRetailer !== r.id
+                  return (
+                    <Line
+                      key={r.id}
+                      type="stepAfter"
+                      dataKey={r.name}
+                      stroke={COLORS[i % COLORS.length]}
+                      strokeWidth={dimmed ? 1.5 : 2}
+                      strokeOpacity={dimmed ? 0.15 : 1}
+                      dot={false}
+                      activeDot={dimmed ? false : {r:4,strokeWidth:0}}
+                      connectNulls
+                      isAnimationActive={true}
+                      animationDuration={600}
+                      animationEasing="ease-out"
+                    />
+                  )
+                })}
               </LineChart>
             </ResponsiveContainer>
             </div>}
           </div>
           {/* Legend */}
           <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px',marginTop:12}}>
-            {retailers.map((r, i) => (
-              <div key={r.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
-                <div style={{width:12,height:3,borderRadius:2,background:COLORS[i%COLORS.length]}} />
-                <span>{r.name}</span>
-                {r.last_price && <span style={{color:'var(--text-muted)'}}>${r.last_price.toLocaleString('en-AU',{minimumFractionDigits:2})}</span>}
-              </div>
-            ))}
+            {retailers.map((r, i) => {
+              const dimmed = highlightedRetailer && highlightedRetailer !== r.id
+              return (
+                <div
+                  key={r.id}
+                  onClick={() => setHighlightedRetailer(prev => prev === r.id ? null : r.id)}
+                  style={{display:'flex',alignItems:'center',gap:6,fontSize:12,cursor:'pointer',opacity: dimmed ? 0.35 : 1,transition:'opacity 0.2s ease-out'}}
+                >
+                  <div style={{width:12,height:3,borderRadius:2,background:COLORS[i%COLORS.length]}} />
+                  <span style={{fontWeight: highlightedRetailer === r.id ? 600 : 400}}>{r.name}</span>
+                  {r.last_price && <span style={{color:'var(--text-muted)'}}>${r.last_price.toLocaleString('en-AU',{minimumFractionDigits:2})}</span>}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
