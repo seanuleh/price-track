@@ -13,6 +13,10 @@ ARG PB_VERSION=0.22.22
 RUN apt-get update && apt-get install -y --no-install-recommends wget unzip ca-certificates xvfb && \
     rm -rf /var/lib/apt/lists/*
 
+# /root defaults to 700 — the claude CLI spawns drop to host uid 1000 (see scraper.js)
+# so they can write to the bind-mounted ~/.claude without leaving root-owned files behind.
+RUN chmod 755 /root
+
 # Install PocketBase
 RUN wget -q "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip" \
     -O /tmp/pb.zip && \

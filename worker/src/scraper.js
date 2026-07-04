@@ -28,6 +28,11 @@ function callClaude(prompt, { tools } = {}) {
     const proc = spawn(CLAUDE_BIN, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, HOME: process.env.CLAUDE_HOME || '/root' },
+      // Runs as host uid/gid 1000 (sean), not the container's root, so it writes
+      // ~/.claude/.credentials.json and friends as sean instead of leaving root-owned
+      // files in the bind-mounted dir that the host CLI then can't touch.
+      uid: 1000,
+      gid: 1000,
     })
 
     let stdout = ''
@@ -399,6 +404,8 @@ Rules: Australian retailers only (.com.au preferred), specific product page URLs
     const proc = spawn(CLAUDE_BIN, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, HOME: process.env.CLAUDE_HOME || '/root' },
+      uid: 1000,
+      gid: 1000,
     })
 
     let buffer = ''
