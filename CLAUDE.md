@@ -99,3 +99,17 @@ docker exec price-track sh -c 'curl -s -X POST http://localhost:8090/api/admins/
 - `CLAUDE_BIN` — path to claude CLI binary (default: `/usr/local/bin/claude`)
 - `CLAUDE_HOME` — home dir for claude CLI (default: `/root`)
 - `CHECK_INTERVAL_MINUTES` — scheduler interval (default: 60)
+
+## `claude` CLI spawns run as host uid 1000, not root (2026-07-05)
+`docker-compose.yml` bind-mounts the host's live `~/.claude` read-write into this container so the
+worker's `claude` calls (`scraper.js`: `callClaude`, `findAustralianRetailersStream`) use the same
+authenticated account as the host's interactive `claude` session — no separate login. The container
+itself still runs as root (PocketBase/Xvfb/Playwright need it), but both `spawn(CLAUDE_BIN, ...)`
+calls pass `uid: 1000, gid: 1000` so the `claude` child process writes `~/.claude` files as `sean`.
+Without this, every scrape's `claude` invocation (this scheduler runs several concurrently via
+`Promise.all` every `CHECK_INTERVAL_MINUTES`) left root-owned files in the shared `~/.claude`
+(config, credentials, plugin state) that the host's own `sean`-uid session couldn't overwrite —
+2031+ root-owned files had piled up, and this was a likely contributor to Sean's host `claude`
+session needing frequent re-logins. `Dockerfile` also does `RUN chmod 755 /root` so uid 1000 can
+traverse into the bind-mounted `.claude` dir (`/root` defaults to `700 root:root`). Full writeup in
+`claude-usage-widget`'s worklog (`2026-07-05-shared-credentials-uid-fix.md`), which hit the same bug.
