@@ -230,13 +230,13 @@ function directPriceFromJsonLd(items) {
     const offerList = Array.isArray(offers) ? offers : [offers]
     for (const offer of offerList) {
       // Standard: offer.price
-      let price = parseFloat(offer.price)
+      let price = parsePrice(offer.price)
       let currency = offer.priceCurrency || 'AUD'
       // Alternative: offer.priceSpecification[].price
       if (isNaN(price) || price <= 0) {
         const specs = Array.isArray(offer.priceSpecification) ? offer.priceSpecification : offer.priceSpecification ? [offer.priceSpecification] : []
         for (const spec of specs) {
-          price = parseFloat(spec.price)
+          price = parsePrice(spec.price)
           currency = spec.priceCurrency || currency
           if (!isNaN(price) && price > 0) break
         }
@@ -875,6 +875,8 @@ async function detectInStock(page) {
 }
 
 function parsePrice(text) {
+  if (typeof text === 'number') return isNaN(text) ? null : text
+  if (typeof text !== 'string') return null
   const cleaned = text.replace(/[^\d.,]/g, '').replace(/,(?=\d{3})/g, '')
   const num = parseFloat(cleaned)
   return isNaN(num) ? null : num
