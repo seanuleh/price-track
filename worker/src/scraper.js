@@ -187,9 +187,30 @@ export async function warmBrowser() {
   }
 }
 
-export async function scrapePrice(url, selector = null, { lastPrice = null } = {}) {
+/**
+ * Hosts whose stripped page text carries no signal about which price is the
+ * buy-box. Amazon listings interleave the seller's price with bundles, other
+ * sellers, sponsored tiles and variant swatches, and ship no usable JSON-LD —
+ * so the raw-text rung there isn't "occasionally wrong", it's never right.
+ * Repeated scrapes of one popsocket URL returned $16.95, $29.99, $36.99 and
+ * null; the browser rung returned the true $64.16 every time. For these hosts
+ * skip straight to the browser: cheapest-first only pays when the cheap rung is
+ * sometimes correct.
+ */
+const RAW_TEXT_BLOCKED_HOSTS = [/(^|\.)amazon\./i]
+
+function rawTextRungAllowed(url) {
   try {
-    return await scrapeWithCuimp(url, { lastPrice })
+    const host = new URL(url).hostname
+    return !RAW_TEXT_BLOCKED_HOSTS.some((re) => re.test(host))
+  } catch {
+    return true
+  }
+}
+
+export async function scrapePrice(url, selector = null, { anchorPrice = null } = {}) {
+  try {
+    return await scrapeWithCuimp(url, { anchorPrice })
   } catch (e) {
     // cuimp got blocked or couldn't find a price — retry with the stealth browser
     console.warn(`[scraper] cuimp failed (${e.message}), falling back to stealth browser`)
@@ -298,7 +319,7 @@ async function llmExtractPrice(content, label) {
   }
 }
 
-async function scrapeWithCuimp(url, { lastPrice = null } = {}) {
+async function scrapeWithCuimp(url, { anchorPrice = null } = {}) {
   console.log('[scraper] cuimp fetching:', url)
   const response = await cuimp.get(url)
   const status = response.status || 0
@@ -322,7 +343,10 @@ async function scrapeWithCuimp(url, { lastPrice = null } = {}) {
     console.warn('[scraper] JSON-LD LLM extraction failed, falling back to raw text')
   }
 
-  // 2. Fallback: raw text
+  // 2. Fallback: raw text — unless this host has no buy-box structure in text
+  if (!rawTextRungAllowed(url)) {
+    throw new Error('raw-text rung not trusted for this host — deferring to browser')
+  }
   console.log('[scraper] Falling back to raw text extraction')
   const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -342,19 +366,21 @@ async function scrapeWithCuimp(url, { lastPrice = null } = {}) {
   const result = await llmExtractPrice(excerpt, 'raw-text')
   if (!result) throw new Error('LLM could not find price on page')
 
-  // Raw text is the least trustworthy rung: a stripped page carries every price
-  // on it (bundles, other sellers, sponsored tiles, variants) with no structure
-  // to say which is the buy-box, so the text model occasionally picks a
-  // neighbour's price. Amazon ships no usable JSON-LD, so those URLs land here
-  // every single check — that's where the phantom popsocket "drops" came from.
-  // If the answer strays far from the established price, throw so scrapePrice
-  // falls through to the stealth browser (JSON-LD → vision), which sees the
-  // rendered layout and gets it right. No new plumbing: the throw reuses the
-  // existing cuimp-failed fallback.
-  if (lastPrice > 0 && result.price > 0) {
-    const ratio = result.price / lastPrice
+  // Raw text is still the least trustworthy rung on the hosts that keep it: a
+  // stripped page carries every price on it with no structure saying which is
+  // the buy-box, so the text model can pick a neighbour's. If the answer strays
+  // far from the established price, throw so scrapePrice falls through to the
+  // stealth browser (JSON-LD → vision), which reads the rendered layout. No new
+  // plumbing: the throw reuses the existing cuimp-failed fallback.
+  //
+  // anchorPrice is a MEDIAN of recent history, not last_price — anchoring on
+  // last_price made the guard self-reinforcing, since last_price is the exact
+  // field a bad scrape poisons. Once it held a wrong $36.99, a band around it
+  // would have accepted the next wrong ~$36 and rejected the true $64.16.
+  if (anchorPrice > 0 && result.price > 0) {
+    const ratio = result.price / anchorPrice
     if (ratio < 0.75 || ratio > 1.33) {
-      throw new Error(`raw-text price $${result.price} deviates from last $${lastPrice} (ratio ${ratio.toFixed(2)}) — distrusting rung`)
+      throw new Error(`raw-text price $${result.price} deviates from anchor $${anchorPrice} (ratio ${ratio.toFixed(2)}) — distrusting rung`)
     }
   }
   return result

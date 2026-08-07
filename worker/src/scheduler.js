@@ -1,4 +1,4 @@
-import { pbList, pbCreate, pbUpdate } from './pb.js'
+import { pbGet, pbList, pbCreate, pbUpdate } from './pb.js'
 import { scrapePrice } from './scraper.js'
 import { sendNotification } from './notifiers/index.js'
 
@@ -82,15 +82,48 @@ export async function runCheckAll(productId) {
   }
 }
 
+/**
+ * Median of this retailer's recent recorded prices, used as the sanity anchor
+ * for the raw-text scrape rung.
+ *
+ * Deliberately NOT last_price: last_price is the field a bad scrape overwrites,
+ * so a band around it drifts onto the bad value and then rejects the correct
+ * one. A median over the last several snapshots needs a majority of them to be
+ * wrong before it moves, so a single bad write can't drag the anchor.
+ *
+ * Returns null when there's too little history to be meaningful — a first-ever
+ * scrape then correctly skips the check rather than inventing a bound.
+ */
+const ANCHOR_SAMPLE_SIZE = 7
+
+async function recentPriceAnchor(retailerId) {
+  try {
+    const res = await pbGet('collections/price_history/records', {
+      filter:  `retailer="${retailerId}"`,
+      sort:    '-created',
+      perPage: ANCHOR_SAMPLE_SIZE,
+      fields:  'price',
+    })
+    const prices = (res.items || []).map((i) => i.price).filter((p) => p > 0).sort((a, b) => a - b)
+    if (prices.length < 3) return null
+    return prices[Math.floor(prices.length / 2)]
+  } catch (e) {
+    console.warn(`[scheduler] Could not compute price anchor for ${retailerId}: ${e.message}`)
+    return null
+  }
+}
+
 export async function checkRetailer(retailer) {
   console.log(`[scheduler] Scraping: ${retailer.name} — ${retailer.url}`)
 
   await pbUpdate('retailers', retailer.id, { is_scraping: true }).catch(() => {})
 
+  const anchorPrice = await recentPriceAnchor(retailer.id)
+
   const startTime = Date.now()
   let result
   try {
-    result = await scrapePrice(retailer.url, retailer.selector, { lastPrice: retailer.last_price || null })
+    result = await scrapePrice(retailer.url, retailer.selector, { anchorPrice })
   } catch (e) {
     const isBotBlocked = /bot protection|captcha|blocked|403|429/i.test(e.message)
     const duration_ms = Date.now() - startTime
