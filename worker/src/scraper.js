@@ -187,9 +187,9 @@ export async function warmBrowser() {
   }
 }
 
-export async function scrapePrice(url, selector = null) {
+export async function scrapePrice(url, selector = null, { lastPrice = null } = {}) {
   try {
-    return await scrapeWithCuimp(url)
+    return await scrapeWithCuimp(url, { lastPrice })
   } catch (e) {
     // cuimp got blocked or couldn't find a price — retry with the stealth browser
     console.warn(`[scraper] cuimp failed (${e.message}), falling back to stealth browser`)
@@ -298,7 +298,7 @@ async function llmExtractPrice(content, label) {
   }
 }
 
-async function scrapeWithCuimp(url) {
+async function scrapeWithCuimp(url, { lastPrice = null } = {}) {
   console.log('[scraper] cuimp fetching:', url)
   const response = await cuimp.get(url)
   const status = response.status || 0
@@ -341,6 +341,22 @@ async function scrapeWithCuimp(url) {
 
   const result = await llmExtractPrice(excerpt, 'raw-text')
   if (!result) throw new Error('LLM could not find price on page')
+
+  // Raw text is the least trustworthy rung: a stripped page carries every price
+  // on it (bundles, other sellers, sponsored tiles, variants) with no structure
+  // to say which is the buy-box, so the text model occasionally picks a
+  // neighbour's price. Amazon ships no usable JSON-LD, so those URLs land here
+  // every single check — that's where the phantom popsocket "drops" came from.
+  // If the answer strays far from the established price, throw so scrapePrice
+  // falls through to the stealth browser (JSON-LD → vision), which sees the
+  // rendered layout and gets it right. No new plumbing: the throw reuses the
+  // existing cuimp-failed fallback.
+  if (lastPrice > 0 && result.price > 0) {
+    const ratio = result.price / lastPrice
+    if (ratio < 0.75 || ratio > 1.33) {
+      throw new Error(`raw-text price $${result.price} deviates from last $${lastPrice} (ratio ${ratio.toFixed(2)}) — distrusting rung`)
+    }
+  }
   return result
 }
 
@@ -517,8 +533,27 @@ export async function fetchProductMeta(url, query) {
         ].filter(Boolean).join('\n')
       })
       await page.close()
-    } catch {
-      // Best effort
+    } catch (e) {
+      console.warn(`[scraper] fetchProductMeta browser fetch failed (${e.message}) — trying cuimp`)
+    }
+
+    // Browser path can fail outright (e.g. Xvfb down) or return nothing on
+    // JS-heavy pages. Fall back to a plain HTTP fetch and scrape the <head>.
+    if (!context.trim()) {
+      try {
+        const response = await cuimp.get(url)
+        const html = typeof response.data === 'string' ? response.data : String(response.data)
+        const meta = (re) => html.match(re)?.[1] || ''
+        context = [
+          meta(/<title[^>]*>([\s\S]*?)<\/title>/i),
+          meta(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']*)["']/i),
+          meta(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i),
+          meta(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']*)["']/i),
+          meta(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']*)["']/i),
+        ].filter(Boolean).join('\n')
+      } catch (e) {
+        console.warn(`[scraper] fetchProductMeta cuimp fetch failed: ${e.message}`)
+      }
     }
   }
 
@@ -541,14 +576,66 @@ URL: ${url || 'none'}
 Respond with ONLY valid JSON, no markdown, no explanation.`
 
   try {
-    const text = await callClaude(prompt)
+    // WebFetch is allowed so an empty context (blocked/JS-only page) doesn't make
+    // Claude answer "I need permission to fetch the URL" — which isn't JSON.
+    const text = await callClaude(prompt, { tools: ['WebFetch'] })
     const clean = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
     const match = clean.match(/\{[\s\S]*\}/)
-    if (!match) throw new Error('No JSON object in response')
+    if (!match) throw new Error(`No JSON object in response: ${clean.slice(0, 200)}`)
     return JSON.parse(match[0])
   } catch (e) {
     console.error('[scraper] fetchProductMeta parse error:', e.message)
     return { name: query || 'Unknown Product', brand: null, description: null, image_url: null }
+  }
+}
+
+/**
+ * Work out the retailer/store name for a product URL, for when the user leaves
+ * the name blank when adding a retailer. Falls back to a prettified hostname so
+ * this never fails hard — a slightly-off name beats blocking the add.
+ */
+export async function fetchRetailerName(url) {
+  const hostFallback = () => {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, '')
+      const base = host.split('.')[0]
+      return base.charAt(0).toUpperCase() + base.slice(1)
+    } catch {
+      return 'Unknown Retailer'
+    }
+  }
+
+  let context = ''
+  try {
+    const response = await cuimp.get(url)
+    const html = typeof response.data === 'string' ? response.data : String(response.data)
+    const meta = (re) => html.match(re)?.[1] || ''
+    context = [
+      meta(/<title[^>]*>([\s\S]*?)<\/title>/i),
+      meta(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']*)["']/i),
+      meta(/<meta[^>]+name=["']application-name["'][^>]+content=["']([^"']*)["']/i),
+    ].filter(Boolean).join('\n')
+  } catch (e) {
+    console.warn(`[scraper] fetchRetailerName fetch failed: ${e.message}`)
+  }
+
+  const prompt = `What is the name of the online store/retailer selling at this URL?
+
+URL: ${url}
+Page context:
+${context.slice(0, 1000)}
+
+Answer with ONLY the retailer's common brand name (e.g. "JB Hi-Fi", "Amazon AU", "Officeworks").
+No explanation, no punctuation, no quotes. Max 5 words.`
+
+  try {
+    const name = (await callClaude(prompt, { tools: ['WebFetch'] })).trim().replace(/^["']|["']$/g, '')
+    // Guard against Claude explaining itself instead of naming the store.
+    if (!name || name.length > 40 || name.split(/\s+/).length > 5) return hostFallback()
+    return name
+  } catch (e) {
+    console.warn(`[scraper] fetchRetailerName failed: ${e.message}`)
+    return hostFallback()
   }
 }
 

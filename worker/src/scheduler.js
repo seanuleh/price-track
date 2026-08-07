@@ -90,7 +90,7 @@ export async function checkRetailer(retailer) {
   const startTime = Date.now()
   let result
   try {
-    result = await scrapePrice(retailer.url, retailer.selector)
+    result = await scrapePrice(retailer.url, retailer.selector, { lastPrice: retailer.last_price || null })
   } catch (e) {
     const isBotBlocked = /bot protection|captcha|blocked|403|429/i.test(e.message)
     const duration_ms = Date.now() - startTime
