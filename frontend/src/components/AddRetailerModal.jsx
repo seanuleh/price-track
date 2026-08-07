@@ -7,16 +7,35 @@ export default function AddRetailerModal({ product, onClose, onAdded }) {
   const [url, setUrl]       = useState('')
   const [error, setError]   = useState('')
   const [saving, setSaving] = useState(false)
+  const [detecting, setDetecting] = useState(false)
 
   const save = async () => {
-    if (!name.trim()) { setError('Retailer name is required'); return }
     if (!url.trim())  { setError('URL is required'); return }
     setSaving(true)
     setError('')
     try {
+      let finalName = name.trim()
+      if (!finalName) {
+        setDetecting(true)
+        try {
+          const res = await fetch('/api/price-track/retailer-name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': pb.authStore.token },
+            body: JSON.stringify({ url: url.trim() }),
+          })
+          if (res.ok) finalName = (await res.json()).name || ''
+        } catch { /* fall through to hostname below */ }
+        setDetecting(false)
+        // Endpoint already falls back to the hostname; this covers it being down.
+        if (!finalName) {
+          try { finalName = new URL(url.trim()).hostname.replace(/^www\./, '') }
+          catch { finalName = 'Unknown Retailer' }
+        }
+      }
+
       await pb.collection('retailers').create({
         product: product.id,
-        name: name.trim(),
+        name: finalName,
         url: url.trim(),
         enabled: true,
         user: pb.authStore.model?.id,
@@ -42,8 +61,8 @@ export default function AddRetailerModal({ product, onClose, onAdded }) {
         </div>
 
         <div className="field">
-          <label>Retailer Name</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Amazon AU, JB Hi-Fi" />
+          <label>Retailer Name <span style={{color:'var(--text-muted)',fontWeight:400}}>— optional, detected from the URL if blank</span></label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Leave blank to auto-detect" />
         </div>
         <div className="field">
           <label>Product URL at this retailer</label>
@@ -54,7 +73,7 @@ export default function AddRetailerModal({ product, onClose, onAdded }) {
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Add Retailer'}
+            {detecting ? 'Detecting name…' : saving ? 'Saving…' : 'Add Retailer'}
           </button>
         </div>
       </div>

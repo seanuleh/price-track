@@ -1,6 +1,6 @@
 import express from 'express'
 import { startScheduler, checkRetailer, runCheckAll } from './scheduler.js'
-import { scrapePrice, detectPriceSelector, fetchProductMeta, findAustralianRetailers, findAustralianRetailersStream, warmBrowser } from './scraper.js'
+import { scrapePrice, detectPriceSelector, fetchProductMeta, fetchRetailerName, findAustralianRetailers, findAustralianRetailersStream, warmBrowser } from './scraper.js'
 import { sendNotification } from './notifiers/index.js'
 import { pbList, pbUpdate, getUserFromToken } from './pb.js'
 
@@ -73,6 +73,25 @@ app.post('/api/price-track/fetch-meta', requireAuth, async (req, res) => {
     res.json(meta)
   } catch (e) {
     console.error('[api] fetch-meta error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+/**
+ * POST /api/price-track/retailer-name
+ * Work out the store name for a product URL (used when the user leaves the
+ * retailer name blank). Always resolves — falls back to the hostname.
+ * Body: { url }
+ */
+app.post('/api/price-track/retailer-name', requireAuth, async (req, res) => {
+  const { url } = req.body
+  if (!url) return res.status(400).json({ error: 'url required' })
+
+  try {
+    const name = await fetchRetailerName(url)
+    res.json({ name })
+  } catch (e) {
+    console.error('[api] retailer-name error:', e.message)
     res.status(500).json({ error: e.message })
   }
 })
