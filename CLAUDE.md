@@ -49,6 +49,11 @@ docker compose up -d --build price-track
 - `POST /api/price-track/test-notification` — send test notification for a channel_id
 - `POST /api/price-track/check-all` — trigger full check run (optional `product_id` body param to limit to one product)
 
+## Notifiers
+`pushbullet`, `webhook`, `email`, `ntfy`. ntfy publishes to the self-hosted server on the `pirate`
+network (`http://ntfy:2586` by default — no Cloudflare, no client cert). Dedicated write-only ntfy
+user + topic `price-track`; token lives in `/data/ntfy/.tokens`. See `~/docs/ntfy.md`.
+
 ## Adding a New Notifier
 1. Create `worker/src/notifiers/<type>.js` — export `async function send(config, notification)`
 2. Register in `worker/src/notifiers/index.js` → `NOTIFIERS` map

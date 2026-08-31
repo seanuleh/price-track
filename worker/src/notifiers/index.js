@@ -1,6 +1,7 @@
 import { pushbullet } from './pushbullet.js'
 import { webhook }    from './webhook.js'
 import { email }      from './email.js'
+import { ntfy }       from './ntfy.js'
 
 /**
  * Notifier registry — add new providers here.
@@ -10,6 +11,7 @@ const NOTIFIERS = {
   pushbullet,
   webhook,
   email,
+  ntfy,
 }
 
 /**

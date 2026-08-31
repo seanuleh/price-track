@@ -6,6 +6,11 @@ const CHANNEL_TYPES = {
   pushbullet: { label: 'Pushbullet', fields: [{ key: 'api_key', label: 'API Key', type: 'password' }] },
   webhook:    { label: 'Webhook',    fields: [{ key: 'url', label: 'Webhook URL', type: 'url' }, { key: 'secret', label: 'Secret (optional)', type: 'text' }] },
   email:      { label: 'Email',      fields: [{ key: 'address', label: 'Email Address', type: 'email' }] },
+  ntfy:       { label: 'ntfy',       fields: [
+    { key: 'topic',  label: 'Topic', type: 'text', placeholder: 'price-track' },
+    { key: 'token',  label: 'Access Token', type: 'password' },
+    { key: 'server', label: 'Server URL (optional)', type: 'url', optional: true, placeholder: 'http://ntfy:2586' },
+  ] },
 }
 
 const INTERVAL_OPTIONS = [
@@ -235,6 +240,7 @@ function EditChannelModal({ channel, onClose, onSaved }) {
             <input
               type={f.type || 'text'}
               value={config[f.key] || ''}
+              placeholder={f.placeholder || ''}
               onChange={e => setConfig(prev => ({ ...prev, [f.key]: e.target.value }))}
             />
           </div>
@@ -243,6 +249,13 @@ function EditChannelModal({ channel, onClose, onSaved }) {
         {type === 'pushbullet' && (
           <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:12}}>
             Get your API key at <a href="https://www.pushbullet.com/#settings" target="_blank" rel="noopener">pushbullet.com/settings</a> → Access Tokens.
+          </div>
+        )}
+
+        {type === 'ntfy' && (
+          <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:12}}>
+            Publishes to the self-hosted ntfy server. Leave the server URL blank to use the
+            internal <code>http://ntfy:2586</code> origin. Subscribe your device to the topic in the ntfy app.
           </div>
         )}
 
@@ -317,6 +330,7 @@ function AddChannelModal({ onClose, onAdded }) {
             <input
               type={f.type || 'text'}
               value={config[f.key] || ''}
+              placeholder={f.placeholder || ''}
               onChange={e => setConfig(prev => ({ ...prev, [f.key]: e.target.value }))}
             />
           </div>
@@ -325,6 +339,13 @@ function AddChannelModal({ onClose, onAdded }) {
         {type === 'pushbullet' && (
           <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:12}}>
             Get your API key at <a href="https://www.pushbullet.com/#settings" target="_blank" rel="noopener">pushbullet.com/settings</a> → Access Tokens.
+          </div>
+        )}
+
+        {type === 'ntfy' && (
+          <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:12}}>
+            Publishes to the self-hosted ntfy server. Leave the server URL blank to use the
+            internal <code>http://ntfy:2586</code> origin. Subscribe your device to the topic in the ntfy app.
           </div>
         )}
 
