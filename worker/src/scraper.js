@@ -9,7 +9,7 @@ chromiumExtra.use(StealthPlugin())
 const CLAUDE_BIN = process.env.CLAUDE_BIN || '/usr/local/bin/claude'
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://ollama:11434'
 const VISION_MODEL = process.env.VISION_MODEL || 'qwen3-vl:4b'
-const TEXT_MODEL = process.env.TEXT_MODEL || 'qwen2.5:7b'
+const TEXT_MODEL = process.env.TEXT_MODEL || 'qwen3:8b'
 
 const cuimp = createCuimpHttp({
   descriptor: { browser: 'chrome', version: '116' },
@@ -295,6 +295,12 @@ async function llmExtractPrice(content, label) {
       { role: 'user', content: content },
     ],
     stream: false,
+    // qwen3 is a hybrid thinking model: reasoning tokens ahead of the JSON slow
+    // it down and can break the schema.
+    think: false,
+    // Inputs cap at 16k chars (~4k tokens). The server default of 32k ctx
+    // costs ~2GB of KV cache for nothing and crowds the vision model.
+    options: { num_ctx: 8192 },
   }
 
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
