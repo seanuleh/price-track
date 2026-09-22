@@ -8,7 +8,7 @@ chromiumExtra.use(StealthPlugin())
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || '/usr/local/bin/claude'
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://ollama:11434'
-const VISION_MODEL = process.env.VISION_MODEL || 'qwen2.5vl:7b'
+const VISION_MODEL = process.env.VISION_MODEL || 'qwen3-vl:4b'
 const TEXT_MODEL = process.env.TEXT_MODEL || 'qwen2.5:7b'
 
 const cuimp = createCuimpHttp({
@@ -844,18 +844,22 @@ async function findPriceWithVision(page, url) {
     model: VISION_MODEL,
     messages: [{
       role: 'user',
-      content: `This is a screenshot of a product page. What is the current selling price shown?
+      content: `This is a screenshot of a product page from an Australian online retailer. What is the current selling price shown?
 
-Return ONLY a JSON object like: {"price": <number>, "currency": "<CODE>"}
+Return ONLY a JSON object like: {"price": <number>, "currency": "AUD"}
 
 Rules:
-- price must be a number (no currency symbol)
-- currency is the 3-letter ISO code (AUD, USD, GBP, EUR). Default to AUD for Australian stores.
+- price must be a number (no currency symbol, no thousands separator)
+- currency is almost always "AUD" — only use another ISO code if the page explicitly labels the price as USD/GBP/EUR
+- Report the full outright purchase price. IGNORE per-month, per-week, instalment, finance, "interest free", Zip/Afterpay/PayPal Pay-in-4 amounts.
 - If there are multiple prices, use the current/sale price (not RRP or original)
 - If NO price is visible in the screenshot, you MUST return {"price": null}
 - Do NOT guess or invent a price. Only report what you can actually see.`,
       images: [base64],
     }],
+    // qwen3-vl is a thinking model. Thinking on is slower and no more accurate here;
+    // capping num_predict or forcing a JSON schema instead truncates the answer to null.
+    think: false,
     stream: false,
   }
 

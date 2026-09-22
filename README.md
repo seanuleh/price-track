@@ -22,7 +22,7 @@ A self-hosted price tracking app. Track products across multiple Australian reta
 | Frontend | React 18 + Vite + Recharts |
 | Backend | PocketBase 0.22.22 (SQLite) |
 | Scraper | Playwright (Chromium → Firefox → WebKit fallback chain) |
-| AI (vision) | Ollama + qwen2.5vl (price detection from screenshots) |
+| AI (vision) | Ollama + qwen3-vl:4b (price detection from screenshots) |
 | AI (text) | Claude CLI — Haiku (retailer discovery, product metadata) |
 | Container | Single Docker image |
 
@@ -102,7 +102,7 @@ cp .env.example .env
 | `CLAUDE_BIN` | `/usr/local/bin/claude` | Path to Claude CLI binary inside container |
 | `CLAUDE_HOME` | `/root` | Home directory for Claude CLI subprocess |
 | `OLLAMA_URL` | `http://ollama:11434` | Ollama API URL for vision-based price detection |
-| `VISION_MODEL` | `qwen2.5vl:7b` | Ollama model to use for screenshot price extraction |
+| `VISION_MODEL` | `qwen3-vl:4b` | Ollama model to use for screenshot price extraction |
 
 ---
 
@@ -110,8 +110,13 @@ cp .env.example .env
 
 Price Track uses two AI backends:
 
-### Vision — Ollama (qwen2.5vl)
-When CSS heuristics fail to extract a price, the scraper takes a screenshot of the product page and sends it to a local Ollama instance running `qwen2.5vl:7b` (configurable via `VISION_MODEL` and `OLLAMA_URL`). Requires Ollama running with a vision-capable model loaded.
+### Vision — Ollama (qwen3-vl:4b)
+When CSS heuristics fail to extract a price, the scraper takes a screenshot of the product page and sends it to a local Ollama instance running `qwen3-vl:4b` (configurable via `VISION_MODEL` and `OLLAMA_URL`). Requires Ollama running with a vision-capable model loaded.
+
+qwen3-vl is a thinking model and the request sends `think: false` — thinking on is slower for no
+accuracy gain on product pages. Do **not** try to shorten its replies with `num_predict` or an
+Ollama `format` JSON schema: both truncate the answer and it returns `null` on nearly every page.
+`temperature: 0` sends it into a repetition loop. Leave the sampling defaults alone.
 
 ### Text — Claude CLI
 1. **Retailer discovery** — "Find AU Retailers" uses Claude with web search to find Australian stores selling a product
