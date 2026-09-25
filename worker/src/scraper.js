@@ -145,21 +145,19 @@ async function scrapeWithBrowser(br, url, { overrideUA = true } = {}) {
       throw new Error(`Page redirected away from ${expectedHost} to ${actualHost} — likely bot protection`)
     }
 
-    // Detect CAPTCHA/challenge pages before waiting or wasting a vision inference.
-    // "Access Denied" is Akamai's block page, which target.com.au serves with a
-    // non-403 status — without this it read as an ordinary page, so all three
-    // engines each paid a vision inference to conclude there was no price, and
-    // the retailer was logged as a transient failure rather than blocked.
-    const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '')
-    if (/captcha|hcaptcha|i am human|additional security check|imperva|datadome|are you a robot/i.test(bodyText) ||
-        /access denied|don't have permission to access|edgesuite\.net/i.test(bodyText)) {
-      throw new Error('Page blocked by bot protection (block page served with a non-error status)')
-    }
+    // Detect CAPTCHA/challenge pages before waiting or wasting a vision inference
+    await throwIfBlockPage(page)
 
     await page.waitForLoadState('networkidle').catch(() => {})
     await page.waitForTimeout(3000)
     // Wait up to 12s for a price to appear in rendered text (JS-heavy sites lazy-render product content)
     await page.waitForFunction(() => /\$\s*\d+/.test(document.body?.innerText || ''), { timeout: 12000 }).catch(() => {})
+
+    // Re-check now the body has actually rendered. The early call above fires
+    // at domcontentloaded, when a block page's body is often still empty — that
+    // is why target.com.au's Akamai page slipped through and cost a vision
+    // inference on each of the three engines before failing as "no price found".
+    await throwIfBlockPage(page)
 
     // The browser got past the block — try cheap JSON-LD/HTML extraction on the
     // rendered HTML before falling back to a vision inference. Tolerate a
@@ -191,6 +189,20 @@ async function scrapeWithBrowser(br, url, { overrideUA = true } = {}) {
     return { ...visionResult, inStock }
   } finally {
     await page.close()
+  }
+}
+
+/**
+ * Block pages that arrive with an ordinary HTTP status, so the status check
+ * can't see them. "Access Denied" + an edgesuite.net reference is Akamai,
+ * which target.com.au serves as a 200.
+ */
+const BLOCK_PAGE_RE = /captcha|hcaptcha|i am human|additional security check|imperva|datadome|are you a robot|access denied|don't have permission to access|edgesuite\.net/i
+
+async function throwIfBlockPage(page) {
+  const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '').catch(() => '')
+  if (BLOCK_PAGE_RE.test(bodyText)) {
+    throw new Error('Page blocked by CAPTCHA/bot protection')
   }
 }
 
