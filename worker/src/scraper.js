@@ -145,10 +145,15 @@ async function scrapeWithBrowser(br, url, { overrideUA = true } = {}) {
       throw new Error(`Page redirected away from ${expectedHost} to ${actualHost} — likely bot protection`)
     }
 
-    // Detect CAPTCHA/challenge pages before waiting or wasting a vision inference
+    // Detect CAPTCHA/challenge pages before waiting or wasting a vision inference.
+    // "Access Denied" is Akamai's block page, which target.com.au serves with a
+    // non-403 status — without this it read as an ordinary page, so all three
+    // engines each paid a vision inference to conclude there was no price, and
+    // the retailer was logged as a transient failure rather than blocked.
     const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '')
-    if (/captcha|hcaptcha|i am human|additional security check|imperva|datadome|are you a robot/i.test(bodyText)) {
-      throw new Error('Page blocked by CAPTCHA/bot protection')
+    if (/captcha|hcaptcha|i am human|additional security check|imperva|datadome|are you a robot/i.test(bodyText) ||
+        /access denied|don't have permission to access|edgesuite\.net/i.test(bodyText)) {
+      throw new Error('Page blocked by bot protection (block page served with a non-error status)')
     }
 
     await page.waitForLoadState('networkidle').catch(() => {})
