@@ -6,6 +6,21 @@ import { createCuimpHttp } from 'cuimp'
 
 chromiumExtra.use(StealthPlugin())
 
+/**
+ * Scrape failure carrying an explicit botBlocked flag. The scheduler disables a
+ * retailer on a bot block but keeps it enabled on a transient failure, and it
+ * used to decide by regexing the message — which broke once scrapePrice started
+ * reporting several rungs: one rung's "HTTP 403" in a combined message made a
+ * merely-unparseable page look permanently blocked.
+ */
+export class ScrapeError extends Error {
+  constructor(message, { botBlocked = false } = {}) {
+    super(message)
+    this.name = 'ScrapeError'
+    this.botBlocked = botBlocked
+  }
+}
+
 const CLAUDE_BIN = process.env.CLAUDE_BIN || '/usr/local/bin/claude'
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://ollama:11434'
 const VISION_MODEL = process.env.VISION_MODEL || 'qwen3-vl:4b'
@@ -208,15 +223,49 @@ function rawTextRungAllowed(url) {
   }
 }
 
+/**
+ * Browser rungs, tried in order after cuimp. Firefox and WebKit are here
+ * because several Australian retailers' bot protection fingerprints Chromium
+ * specifically: bigw.com.au and ebay.com.au 403 every plain-HTTP and
+ * Chromium-stealth request but return 200 to Gecko/WebKit with no other
+ * coaxing. Before this, both were auto-disabled as permanently blocked.
+ *
+ * Their UA is left alone — spoofing a Chrome UA from a Gecko/WebKit engine is
+ * exactly the mismatch the fingerprinters look for.
+ */
+const BROWSER_RUNGS = [
+  { name: 'chromium-stealth', get: getBrowser,        opts: { overrideUA: true } },
+  { name: 'firefox',          get: getFirefoxBrowser, opts: { overrideUA: false } },
+  { name: 'webkit',           get: getWebkitBrowser,  opts: { overrideUA: false } },
+]
+
+const BLOCK_RE = /bot protection|captcha|blocked|403|429/i
+
 export async function scrapePrice(url, selector = null, { anchorPrice = null } = {}) {
   try {
     return await scrapeWithCuimp(url, { anchorPrice })
   } catch (e) {
-    // cuimp got blocked or couldn't find a price — retry with the stealth browser
-    console.warn(`[scraper] cuimp failed (${e.message}), falling back to stealth browser`)
-    const br = await getBrowser()
-    return await scrapeWithBrowser(br, url)
+    console.warn(`[scraper] cuimp failed (${e.message}), falling back to browser rungs`)
   }
+
+  const failures = []
+  for (const rung of BROWSER_RUNGS) {
+    try {
+      const br = await rung.get()
+      const result = await scrapeWithBrowser(br, url, rung.opts)
+      if (failures.length) console.log(`[scraper] ${rung.name} rung succeeded after ${failures.length} rung(s) failed`)
+      return result
+    } catch (e) {
+      console.warn(`[scraper] ${rung.name} rung failed: ${e.message}`)
+      failures.push({ rung: rung.name, message: e.message })
+    }
+  }
+
+  // Only a block on every engine is a real block. If any engine loaded the page
+  // and merely failed to find a price, the retailer stays enabled — that's a
+  // bad URL or a transient render, not Cloudflare.
+  const botBlocked = failures.every(f => BLOCK_RE.test(f.message))
+  throw new ScrapeError(failures.map(f => `${f.rung}: ${f.message}`).join(' | '), { botBlocked })
 }
 
 function extractJsonLd(html) {
@@ -250,6 +299,8 @@ function directPriceFromJsonLd(items) {
     if (!offers) continue
     const offerList = Array.isArray(offers) ? offers : [offers]
     for (const offer of offerList) {
+      // Skip plans outright — a per-period offer is a repayment, never a price
+      if (isInstalmentOffer(offer)) continue
       // Standard: offer.price
       let price = parsePrice(offer.price)
       let currency = offer.priceCurrency || 'AUD'
@@ -257,6 +308,7 @@ function directPriceFromJsonLd(items) {
       if (isNaN(price) || price <= 0) {
         const specs = Array.isArray(offer.priceSpecification) ? offer.priceSpecification : offer.priceSpecification ? [offer.priceSpecification] : []
         for (const spec of specs) {
+          if (isInstalmentSpec(spec)) continue
           price = parsePrice(spec.price)
           currency = spec.priceCurrency || currency
           if (!isNaN(price) && price > 0) break
@@ -278,6 +330,76 @@ function stripJsonLdForLlm(items) {
   })
 }
 
+/**
+ * Instalment / buy-now-pay-later fragments, which Sean never wants tracked: the
+ * per-period figure is the one retailers render biggest, so both the text model
+ * and JSON-LD happily return it as "the price" (Telstra's PS5 landing page
+ * yielded $58.29 — a 24-month plan instalment — for a ~$800 console).
+ *
+ * Blanked out of the page text before the model sees it. Every pattern requires
+ * the period suffix or a "N payments of" prefix, so an outright price with no
+ * such marker is never touched.
+ */
+const INSTALMENT_PATTERNS = [
+  // $58.29/mth, $58.29 per month, $58.29 a week, $58.29 p/m, $58.29/fortnight.
+  // The gap allows leftover inline markup between the figure and its period
+  // label (Telstra ships `$58.29 <small>/mth</small>`); it can't contain a digit
+  // or a $, so it can never swallow the neighbouring outright price.
+  /(?:A\$|US\$|\$)\s*[\d,]+(?:\.\d{1,2})?[^\d$]{0,20}?(?:\/|per\s+|a\s+|p\/)\s*(?:mo|mth|month|monthly|wk|week|weekly|fortnight|fortnightly|yr|year|day)\b\.?/gi,
+  // 4 payments of $249.50, 4 interest-free instalments of $249.50
+  /\b\d+\s+(?:interest[\s-]?free\s+)?(?:weekly\s+|fortnightly\s+|monthly\s+)?(?:payments?|instal?lments?)\s+of\s+(?:A\$|US\$|\$)\s*[\d,]+(?:\.\d{1,2})?/gi,
+  // $249.50 x 4, $249.50 x4 payments
+  /(?:A\$|US\$|\$)\s*[\d,]+(?:\.\d{1,2})?\s*(?:x|×)\s*\d+\b/gi,
+]
+
+const HTML_ENTITIES = { lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', amp: '&' }
+
+/**
+ * Retailers double-escape markup into text-bearing attributes, so the stripped
+ * page still carries `&lt;small&gt;/mth&lt;/small&gt;` as literal characters.
+ * Decoding (then re-stripping the tags that appear) is what lets the instalment
+ * patterns see `$58.29 /mth` as one span instead of two unrelated fragments.
+ * &amp; is decoded last so `&amp;lt;` doesn't collapse into a bare `<`.
+ */
+function decodeEntities(text) {
+  return text
+    .replace(/&(lt|gt|quot|apos|nbsp);/gi, (_, n) => HTML_ENTITIES[n.toLowerCase()])
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&amp;/gi, '&')
+}
+
+function stripInstalmentPrices(text) {
+  let out = text
+  for (const re of INSTALMENT_PATTERNS) out = out.replace(re, ' [instalment removed] ')
+  return out
+}
+
+/**
+ * An offer priced per billing period is a plan, not an outright purchase.
+ * schema.org marks these on the price specification (UnitPriceSpecification with
+ * billingDuration/billingIncrement/referenceQuantity) or via priceType.
+ */
+function isInstalmentSpec(spec) {
+  if (!spec || typeof spec !== 'object') return false
+  const type = [].concat(spec['@type'] || []).join(' ')
+  if (/Installment|Instalment|Subscription/i.test(type)) return true
+  if (/Installment|Instalment|Subscription|Lease|Rental/i.test(String(spec.priceType || ''))) return true
+  return ['billingDuration', 'billingIncrement', 'billingPeriod', 'billingStart', 'referenceQuantity']
+    .some(k => spec[k] != null)
+}
+
+/**
+ * An offer is a plan if it says so itself, or if every price specification it
+ * carries is per-period. The second half matters because retailers mirror the
+ * repayment figure up onto offer.price, so checking the offer alone lets the
+ * instalment straight through.
+ */
+function isInstalmentOffer(offer) {
+  if (isInstalmentSpec(offer)) return true
+  const specs = [].concat(offer?.priceSpecification || [])
+  return specs.length > 0 && specs.every(isInstalmentSpec)
+}
+
 async function llmExtractPrice(content, label) {
   const body = {
     model: TEXT_MODEL,
@@ -291,7 +413,7 @@ async function llmExtractPrice(content, label) {
       required: ['price', 'currency', 'in_stock'],
     },
     messages: [
-      { role: 'system', content: 'Extract price data from product page content. price is the current selling price as a number, null if not found. currency is 3-letter ISO code defaulting to AUD. in_stock is true unless page says out of stock.' },
+      { role: 'system', content: 'Extract price data from product page content. price is the FULL OUTRIGHT purchase price of the single product as a number, null if not found. NEVER report a per-month, per-week, per-fortnight, instalment, finance, lease, "interest free", Zip/Afterpay/Klarna/PayPal Pay-in-4 or repayment amount — if only such a figure is present, return null. currency is 3-letter ISO code defaulting to AUD. in_stock is true unless page says out of stock.' },
       { role: 'user', content: content },
     ],
     stream: false,
@@ -354,12 +476,18 @@ async function scrapeWithCuimp(url, { anchorPrice = null } = {}) {
     throw new Error('raw-text rung not trusted for this host — deferring to browser')
   }
   console.log('[scraper] Falling back to raw text extraction')
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  const text = stripInstalmentPrices(
+    decodeEntities(
+      html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+    )
+      // Decoding revives tags that were escaped into attribute text — drop those too
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  )
 
   // Centre window on first price-like pattern so large pages don't miss it
   let excerpt = text
@@ -393,6 +521,82 @@ async function scrapeWithCuimp(url, { anchorPrice = null } = {}) {
 }
 
 /**
+ * Category, landing and search URLs are the biggest source of broken retailer
+ * rows. A grid page renders many products, so whichever rung fires returns *a*
+ * price unrelated to the tracked product (gamesmen.com.au/ps5 gave $499.99 for
+ * a ~$800 console, target.com.au/playstation-5 gave $939), and a pure marketing
+ * landing page has no price at all, so the scrape "fails" for a reason no
+ * amount of scraper work can fix. Cheaper to never store the URL.
+ *
+ * Shape test only — deliberately blocklist-based, because plenty of real
+ * product pages are a bare path with no /product/ marker
+ * (gamesmen.com.au/playstation-5-console-slim).
+ */
+const PRODUCT_PATH_RE = /(^|\/)(product|products|p|dp|item|itm|sku|buy)(\/|$)/i
+const CATEGORY_PATH_RE = /(^|\/)(c|b|bn|cat|category|categories|collection|collections|page|pages|browse|featured|deals|clearance|brand|brands|catalogue|catalog|range|department|shop-all|all)(\/|$)/i
+const SEARCH_PATH_RE = /(^|\/)(search|catalogsearch|results?|find)(\/|$)/i
+const SEARCH_QUERY_RE = /[?&](q|k|s|text|search|searchTerm|keyword|keywords|query|term)=/i
+
+function productUrlShape(rawUrl) {
+  let u
+  try { u = new URL(rawUrl) } catch { return 'invalid' }
+  const path = u.pathname.replace(/\/+$/, '')
+  if (!path) return 'category'                        // bare homepage
+  if (SEARCH_QUERY_RE.test(u.search)) return 'category'
+  if (SEARCH_PATH_RE.test(path)) return 'category'
+  // /collections/x/products/y is a product; /collections/x alone is not
+  if (PRODUCT_PATH_RE.test(path)) return 'product'
+  if (CATEGORY_PATH_RE.test(path)) return 'category'
+  return 'unknown'
+}
+
+/**
+ * Second pass for the 'unknown' (bare-path) shapes, which the URL alone can't
+ * separate: fetch the page once and look for schema.org Product markup. Real
+ * product pages emit a Product; the PS5 category/landing pages emitted only
+ * Corporation/FAQPage or nothing. A fetch that fails (403, timeout) is treated
+ * as a pass — plenty of real product pages block a plain HTTP fetch, and
+ * dropping a good retailer is worse than keeping a questionable one.
+ */
+async function looksLikeProductPage(url) {
+  try {
+    const response = await cuimp.get(url)
+    if ((response.status || 0) >= 400) return true
+    const html = typeof response.data === 'string' ? response.data : String(response.data)
+    if (/<meta[^>]+property=["']og:type["'][^>]+content=["']product["']/i.test(html)) return true
+    if (/itemtype=["'][^"']*schema\.org\/Product/i.test(html)) return true
+    if (extractJsonLd(html).length > 0) return true
+    // Reachable, parseable, and advertising no product — a listing or landing page
+    return false
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Drop discovered URLs that aren't single-product pages, concurrently.
+ */
+async function filterToProductPages(candidates) {
+  const verdicts = await Promise.all(candidates.map(async (r) => {
+    const shape = productUrlShape(r.url)
+    if (shape === 'invalid' || shape === 'category') return false
+    if (shape === 'product') return true
+    return await looksLikeProductPage(r.url)
+  }))
+  const kept = candidates.filter((_, i) => verdicts[i])
+  const dropped = candidates.filter((_, i) => !verdicts[i])
+  if (dropped.length) {
+    console.log(`[scraper] Dropped ${dropped.length} non-product URL(s): ${dropped.map(d => d.url).join(', ')}`)
+  }
+  return kept
+}
+
+const PRODUCT_URL_PROMPT_RULES = `- The url MUST be the page for ONE specific product (a buy page with a single Add to Cart and one price)
+- NEVER return a category, collection, brand, search-results, "featured", deals or marketing landing page — e.g. /ps5, /pages/playstation-5, /c/12345, /b/..., ?q=... are all WRONG
+- NEVER return a page that only quotes a monthly/weekly repayment or finance plan instead of the outright price
+- Skip a retailer entirely rather than returning its category page`
+
+/**
  * Use Claude with web search to find Australian retailers selling a product.
  * Returns an array of { name, url } objects.
  */
@@ -415,7 +619,7 @@ Return a JSON array of up to 10 retailers in this exact format:
 Rules:
 - Only include .com.au or Australian retailers (aussie stores)
 - Only include retailers where you are confident the product is actually listed
-- Use the specific product page URL, not just the retailer homepage
+${PRODUCT_URL_PROMPT_RULES}
 - Do not include the manufacturer's own store (${brand || 'manufacturer'})
 - Respond with ONLY valid JSON array, no markdown, no explanation`
 
@@ -427,7 +631,7 @@ Rules:
 
   try {
     const results = JSON.parse(match[0])
-    return results.filter(r => r.name && r.url && r.url.startsWith('http'))
+    return await filterToProductPages(results.filter(r => r.name && r.url && r.url.startsWith('http')))
   } catch {
     return []
   }
@@ -446,7 +650,8 @@ export function findAustralianRetailersStream({ product_name, brand, model, url,
     const prompt = `Search for Australian retailers selling "${query}".${url ? ` Manufacturer page: ${url}` : ''}${excludeSection}
 Do ONE web search. Return ONLY a JSON array (no markdown):
 [{"name":"Retailer Name","url":"https://exact-product-page-url"}]
-Rules: Australian retailers only (.com.au preferred), specific product page URLs, exclude manufacturer store (${brand || 'manufacturer'}), only include if confident product is listed.`
+Rules: Australian retailers only (.com.au preferred), exclude manufacturer store (${brand || 'manufacturer'}), only include if confident product is listed.
+${PRODUCT_URL_PROMPT_RULES}`
 
     const args = ['--print', '--verbose', '--output-format', 'stream-json', '--model', 'claude-haiku-4-5-20251001', '--max-turns', '5', '--allowedTools', 'WebSearch', '-p', prompt]
     const proc = spawn(CLAUDE_BIN, args, {
@@ -508,12 +713,14 @@ Rules: Australian retailers only (.com.au preferred), specific product page URLs
       if (code !== 0) return reject(new Error(`Claude exited ${code}: ${stderr.slice(0, 500)}`))
       const match = finalResult.match(/\[[\s\S]*\]/)
       if (!match) return resolve([])
+      let results
       try {
-        const results = JSON.parse(match[0])
-        resolve(results.filter(r => r.name && r.url && r.url.startsWith('http')))
+        results = JSON.parse(match[0]).filter(r => r.name && r.url && r.url.startsWith('http'))
       } catch {
-        resolve([])
+        return resolve([])
       }
+      onStatus('Checking each URL is a product page')
+      filterToProductPages(results).then(resolve, () => resolve(results))
     })
   })
 }

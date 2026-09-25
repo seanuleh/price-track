@@ -125,7 +125,11 @@ export async function checkRetailer(retailer) {
   try {
     result = await scrapePrice(retailer.url, retailer.selector, { anchorPrice })
   } catch (e) {
-    const isBotBlocked = /bot protection|captcha|blocked|403|429/i.test(e.message)
+    // scrapePrice sets botBlocked only when every engine was blocked. The regex
+    // is the fallback for errors raised outside the rung ladder.
+    const isBotBlocked = typeof e.botBlocked === 'boolean'
+      ? e.botBlocked
+      : /bot protection|captcha|blocked|403|429/i.test(e.message)
     const duration_ms = Date.now() - startTime
     const updatePayload = { is_scraping: false, last_checked: new Date().toISOString() }
     if (isBotBlocked) updatePayload.enabled = false
