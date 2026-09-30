@@ -9,7 +9,7 @@ DATA_DIR="/pb/pb_data"
 
 # Start PocketBase in background
 echo "[entrypoint] Starting PocketBase..."
-$PB_BIN serve --http=0.0.0.0:8090 --dir="$DATA_DIR" --publicDir="/pb/pb_public" &
+$PB_BIN serve --http=0.0.0.0:8090 --dir="$DATA_DIR" --publicDir="/pb/pb_public" --migrationsDir=/pb/pb_migrations &
 PB_PID=$!
 
 # Start virtual display for headed Chrome (bypasses bot detection).

@@ -193,7 +193,7 @@ function AddAlertModal({ products, onClose, onAdded }) {
         condition,
         target_price: (condition === 'any_change' || condition === 'any_drop') ? null : parseFloat(targetPrice),
         enabled: true,
-        user: pb.authStore.model?.id,
+        user: pb.authStore.record?.id,
       })
       onAdded(record)
     } catch (e) {

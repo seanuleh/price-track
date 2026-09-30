@@ -20,7 +20,7 @@ A self-hosted price tracking app. Track products across multiple Australian reta
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18 + Vite + Recharts |
-| Backend | PocketBase 0.22.22 (SQLite) |
+| Backend | PocketBase 0.40.4 (SQLite) |
 | Scraper | Playwright (Chromium → Firefox → WebKit fallback chain) |
 | AI (vision) | Ollama + qwen3-vl:4b (price detection from screenshots) |
 | AI (text) | Claude CLI — Haiku (retailer discovery, product metadata) |

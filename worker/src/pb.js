@@ -1,4 +1,4 @@
-// Minimal PocketBase admin client (no SDK dependency — just fetch)
+// Minimal PocketBase superuser client (no SDK dependency — just fetch)
 const PB_URL = process.env.POCKETBASE_URL || 'http://localhost:8090'
 const ADMIN_EMAIL    = process.env.POCKETBASE_ADMIN_EMAIL
 const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD
@@ -9,7 +9,7 @@ let _tokenExpiry = 0
 async function getToken() {
   if (_token && Date.now() < _tokenExpiry) return _token
 
-  const res = await fetch(`${PB_URL}/api/admins/auth-with-password`, {
+  const res = await fetch(`${PB_URL}/api/collections/_superusers/auth-with-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ identity: ADMIN_EMAIL, password: ADMIN_PASSWORD }),

@@ -1,7 +1,7 @@
 # price-track — Agent Reference
 
 ## Stack
-- React + Vite frontend, PocketBase 0.22.22 backend, single Docker container
+- React + Vite frontend, PocketBase 0.40.4 backend, single Docker container
 - Node.js worker (runs inside same container) — Playwright scraping + Claude CLI AI + scheduled checks
 - Auth: Cloudflare Access → cfAuth sidecar auto-creates PB users and injects token into localStorage. No login form needed.
 
@@ -92,7 +92,7 @@ No backup needed before schema changes — migrations are transactional and non-
 
 ## Get an Admin Token (inside container)
 ```bash
-docker exec price-track sh -c 'curl -s -X POST http://localhost:8090/api/admins/auth-with-password \
+docker exec price-track sh -c 'curl -s -X POST http://localhost:8090/api/collections/_superusers/auth-with-password \
   -H "Content-Type: application/json" \
   -d "{\"identity\":\"$PB_ADMIN_EMAIL\",\"password\":\"$PB_ADMIN_PASSWORD\"}" \
   | sed "s/.*\"token\":\"\([^\"]*\)\".*/\1/"'

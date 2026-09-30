@@ -24,7 +24,7 @@ function AddAlertModal({ product, onClose }) {
         condition,
         target_price: (condition === 'any_change' || condition === 'any_drop') ? null : parseFloat(targetPrice),
         enabled: true,
-        user: pb.authStore.model?.id,
+        user: pb.authStore.record?.id,
       })
       setDone(true)
       setTimeout(onClose, 900)

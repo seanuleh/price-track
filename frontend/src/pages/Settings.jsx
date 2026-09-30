@@ -37,7 +37,7 @@ export default function Settings() {
     try {
       const [chs, user] = await Promise.all([
         pb.collection('notification_channels').getFullList({ sort: 'name' }),
-        pb.collection('users').getOne(pb.authStore.model?.id),
+        pb.collection('users').getOne(pb.authStore.record?.id),
       ])
       setChannels(chs)
       setGlobalInterval(user.default_check_interval_minutes ? String(user.default_check_interval_minutes) : '')
@@ -55,7 +55,7 @@ export default function Settings() {
     setIntervalSaving(true)
     setIntervalSaved(false)
     try {
-      await pb.collection('users').update(pb.authStore.model?.id, {
+      await pb.collection('users').update(pb.authStore.record?.id, {
         default_check_interval_minutes: val ? parseInt(val, 10) : null,
       })
       setIntervalSaved(true)
@@ -293,7 +293,7 @@ function AddChannelModal({ onClose, onAdded }) {
         name: name.trim(),
         config,
         enabled: true,
-        user: pb.authStore.model?.id,
+        user: pb.authStore.record?.id,
       })
       onAdded(record)
     } catch (e) {

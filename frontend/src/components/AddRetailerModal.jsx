@@ -38,7 +38,7 @@ export default function AddRetailerModal({ product, onClose, onAdded }) {
         name: finalName,
         url: url.trim(),
         enabled: true,
-        user: pb.authStore.model?.id,
+        user: pb.authStore.record?.id,
       })
       onAdded()
     } catch (e) {

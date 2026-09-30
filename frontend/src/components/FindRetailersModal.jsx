@@ -107,7 +107,7 @@ export default function FindRetailersModal({ product, onClose, onAdded }) {
           name: r.name,
           url: r.url,
           enabled: true,
-          user: pb.authStore.model?.id,
+          user: pb.authStore.record?.id,
         })
       }
       onAdded()

@@ -8,9 +8,9 @@ RUN npm run build
 
 # Stage 2: Single container — Playwright (Jammy) + PocketBase + Node worker
 FROM mcr.microsoft.com/playwright:v1.58.2-jammy
-ARG PB_VERSION=0.22.22
+ARG PB_VERSION=0.40.4
 
-RUN apt-get update && apt-get install -y --no-install-recommends wget unzip ca-certificates xvfb && \
+RUN apt-get update && apt-get install -y --no-install-recommends wget unzip ca-certificates xvfb curl && \
     rm -rf /var/lib/apt/lists/*
 
 # /root defaults to 700 — the claude CLI spawns drop to host uid 1000 (see scraper.js)

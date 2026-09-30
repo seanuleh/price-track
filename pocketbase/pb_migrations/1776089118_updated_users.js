@@ -1,18 +1,16 @@
 /// <reference path="../pb_data/types.d.ts" />
-migrate((db) => {
-  const dao = new Dao(db)
-  const collection = dao.findCollectionByNameOrId("_pb_users_auth_")
+migrate((app) => {
+  const collection = app.findCollectionByNameOrId("_pb_users_auth_")
 
   collection.createRule = null
   collection.deleteRule = null
 
-  return dao.saveCollection(collection)
-}, (db) => {
-  const dao = new Dao(db)
-  const collection = dao.findCollectionByNameOrId("_pb_users_auth_")
+  app.save(collection)
+}, (app) => {
+  const collection = app.findCollectionByNameOrId("_pb_users_auth_")
 
   collection.createRule = ""
   collection.deleteRule = "id = @request.auth.id"
 
-  return dao.saveCollection(collection)
+  app.save(collection)
 })

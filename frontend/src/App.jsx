@@ -128,7 +128,7 @@ export default function App() {
           {JSON.stringify(JSON.parse(localStorage.getItem('pocketbase_auth') || 'null'), null, 2)}
           {'\n\n--- pb.authStore ---\n'}
           token: {pb.authStore.token ? pb.authStore.token.slice(0,40)+'...' : 'null'}
-          {'\nmodel: '}{JSON.stringify(pb.authStore.model, null, 2)}
+          {'\nrecord: '}{JSON.stringify(pb.authStore.record, null, 2)}
         </div>
       )}
       <nav className="bottom-nav">

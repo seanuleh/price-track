@@ -49,7 +49,7 @@ export default function AddProductModal({ onClose, onAdded }) {
         image_url: image.trim() || null,
         description: desc.trim() || null,
         brand: brand.trim() || null,
-        user: pb.authStore.model?.id,
+        user: pb.authStore.record?.id,
       })
       onAdded(record)
     } catch (e) {

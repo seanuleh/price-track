@@ -1,7 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
-migrate((db) => {
-  const dao = new Dao(db)
-  const collection = dao.findCollectionByNameOrId("oasks2rhe63qpx6")
+migrate((app) => {
+  const collection = app.findCollectionByNameOrId("oasks2rhe63qpx6")
 
   collection.listRule = "user = @request.auth.id"
   collection.viewRule = "user = @request.auth.id"
@@ -9,10 +8,9 @@ migrate((db) => {
   collection.updateRule = "user = @request.auth.id"
   collection.deleteRule = "user = @request.auth.id"
 
-  return dao.saveCollection(collection)
-}, (db) => {
-  const dao = new Dao(db)
-  const collection = dao.findCollectionByNameOrId("oasks2rhe63qpx6")
+  app.save(collection)
+}, (app) => {
+  const collection = app.findCollectionByNameOrId("oasks2rhe63qpx6")
 
   collection.listRule = ""
   collection.viewRule = ""
@@ -20,5 +18,5 @@ migrate((db) => {
   collection.updateRule = ""
   collection.deleteRule = ""
 
-  return dao.saveCollection(collection)
+  app.save(collection)
 })
