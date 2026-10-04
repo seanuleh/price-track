@@ -355,6 +355,32 @@ label {
 }
 .product-row:hover { background: var(--bg); border-color: #C8BFB4; }
 .product-row:active { background: var(--surface2); }
+.product-row.dragging {
+  position: relative;
+  z-index: 10;
+  background: var(--surface);
+  border-color: #C8BFB4;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  cursor: grabbing;
+}
+
+.product-row-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 44px;
+  margin: 0 -8px 0 -10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  opacity: 0.5;
+  cursor: grab;
+  touch-action: none;
+}
+.product-row-handle:hover { opacity: 1; }
+.product-row.dragging .product-row-handle { cursor: grabbing; opacity: 1; }
 
 .product-row-thumb {
   width: 44px; height: 44px;
