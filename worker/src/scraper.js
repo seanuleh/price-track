@@ -25,6 +25,9 @@ const CLAUDE_BIN = process.env.CLAUDE_BIN || '/usr/local/bin/claude'
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://ollama:11434'
 const VISION_MODEL = process.env.VISION_MODEL || 'qwen3-vl:4b'
 const TEXT_MODEL = process.env.TEXT_MODEL || 'qwen3:8b'
+// Onboarding only (product meta, retailer search/naming, selector detection). The
+// recurring price checks stay on local Ollama models to keep plan usage down.
+const CLAUDE_MODEL = 'claude-haiku-5-5'
 
 const cuimp = createCuimpHttp({
   descriptor: { browser: 'chrome', version: '116' },
@@ -36,7 +39,7 @@ const cuimp = createCuimpHttp({
 
 function callClaude(prompt, { tools } = {}) {
   return new Promise((resolve, reject) => {
-    const args = ['--print', '--output-format', 'json', '--model', 'claude-haiku-4-5-20251001']
+    const args = ['--print', '--output-format', 'json', '--model', CLAUDE_MODEL]
     if (tools && tools.length) args.push('--allowedTools', tools.join(','))
     args.push('-p', prompt)
 
@@ -670,7 +673,7 @@ Do ONE web search. Return ONLY a JSON array (no markdown):
 Rules: Australian retailers only (.com.au preferred), exclude manufacturer store (${brand || 'manufacturer'}), only include if confident product is listed.
 ${PRODUCT_URL_PROMPT_RULES}`
 
-    const args = ['--print', '--verbose', '--output-format', 'stream-json', '--model', 'claude-haiku-4-5-20251001', '--max-turns', '5', '--allowedTools', 'WebSearch', '-p', prompt]
+    const args = ['--print', '--verbose', '--output-format', 'stream-json', '--model', CLAUDE_MODEL, '--max-turns', '5', '--allowedTools', 'WebSearch', '-p', prompt]
     const proc = spawn(CLAUDE_BIN, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, HOME: process.env.CLAUDE_HOME || '/root' },
